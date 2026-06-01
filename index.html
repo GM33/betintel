@@ -504,89 +504,226 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 </div>
 
 <script>
-let currentUser=null,currentTier='free',selectedPlan='pro',parlayLegs=[];
-const USERS={'agalan620':{pass:'BetIntel2026!',tier:'pro'},'admin':{pass:'betintel2026',tier:'elite'},'sharp':{pass:'picks2026',tier:'free'}};
+let currentUser = null;
+let currentTier = 'free';
+let selectedPlan = 'pro';
+let parlayLegs = [];
 
-function switchTab(tab,btn){
-  document.querySelectorAll('.auth-tab').forEach(t=>t.classList.remove('active'));
+const USERS = {
+  agalan620: { pass: 'BetIntel2026!', tier: 'pro' },
+  admin: { pass: 'betintel2026', tier: 'elite' },
+  sharp: { pass: 'picks2026', tier: 'free' }
+};
+
+function switchTab(tab, btn) {
+  document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
-  document.getElementById('login-form').style.display=tab==='login'?'':'none';
-  document.getElementById('signup-form').style.display=tab==='signup'?'':'none';
+  document.getElementById('login-form').style.display = tab === 'login' ? 'block' : 'none';
+  document.getElementById('signup-form').style.display = tab === 'signup' ? 'block' : 'none';
 }
-function doLogin(){
-  const u=document.getElementById('login-user').value.trim();
-  const p=document.getElementById('login-pass').value;
-  const err=document.getElementById('login-err');
-  if(USERS[u]&&USERS[u].pass===p){currentUser=u;currentTier=USERS[u].tier;err.textContent='';launchApp();}
-  else{err.textContent='Invalid credentials. Try again.';}
+
+function doLogin() {
+  const u = document.getElementById('login-user').value.trim();
+  const p = document.getElementById('login-pass').value;
+  const err = document.getElementById('login-err');
+
+  if (USERS[u] && USERS[u].pass === p) {
+    currentUser = u;
+    currentTier = USERS[u].tier;
+    err.textContent = '';
+    launchApp();
+  } else {
+    err.textContent = 'Invalid credentials. Try again.';
+  }
 }
-function doSignup(){
-  const u=document.getElementById('su-user').value.trim();
-  const e=document.getElementById('su-email').value.trim();
-  const p=document.getElementById('su-pass').value;
-  const err=document.getElementById('su-err');
-  if(!u||!e||!p){err.textContent='All fields required.';return;}
-  if(USERS[u]){err.textContent='Username taken.';return;}
-  USERS[u]={pass:p,tier:'free'};currentUser=u;currentTier='free';launchApp();
+
+function doSignup() {
+  const u = document.getElementById('su-user').value.trim();
+  const e = document.getElementById('su-email').value.trim();
+  const p = document.getElementById('su-pass').value;
+  const err = document.getElementById('su-err');
+
+  if (!u || !e || !p) {
+    err.textContent = 'All fields required.';
+    return;
+  }
+
+  if (USERS[u]) {
+    err.textContent = 'Username taken.';
+    return;
+  }
+
+  USERS[u] = { pass: p, tier: 'free' };
+  currentUser = u;
+  currentTier = 'free';
+  err.textContent = '';
+  launchApp();
 }
-function launchApp(){
-  document.getElementById('auth').style.display='none';
-  document.getElementById('app').style.display='block';
-  const badge=document.getElementById('tier-badge');
-  if(currentTier==='elite'){badge.className='badge badge-elite';badge.textContent='ELITE';document.getElementById('upgrade-hdr-btn').style.display='none';}
-  else if(currentTier==='pro'){badge.className='badge badge-pro';badge.textContent='PRO';document.getElementById('upgrade-hdr-btn').style.display='none';document.getElementById('pro-gate').style.display='none';}
-  else{badge.className='badge badge-free';badge.textContent='FREE';}
+
+function launchApp() {
+  document.getElementById('auth').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+
+  const badge = document.getElementById('tier-badge');
+  const upgradeBtn = document.getElementById('upgrade-hdr-btn');
+  const proGate = document.getElementById('pro-gate');
+
+  badge.className = 'badge';
+  upgradeBtn.style.display = 'inline-block';
+  if (proGate) proGate.style.display = 'block';
+
+  if (currentTier === 'elite') {
+    badge.className = 'badge badge-elite';
+    badge.textContent = 'ELITE';
+    upgradeBtn.style.display = 'none';
+    if (proGate) proGate.style.display = 'none';
+  } else if (currentTier === 'pro') {
+    badge.className = 'badge badge-pro';
+    badge.textContent = 'PRO';
+    upgradeBtn.style.display = 'none';
+    if (proGate) proGate.style.display = 'none';
+  } else {
+    badge.className = 'badge badge-free';
+    badge.textContent = 'FREE';
+  }
+
+  showPage('picks', document.querySelector('.nav-tab'));
 }
-function doLogout(){
-  currentUser=null;currentTier='free';
-  document.getElementById('app').style.display='none';
-  document.getElementById('auth').style.display='flex';
-  document.getElementById('login-user').value='';
-  document.getElementById('login-pass').value='';
-}
-function showPage(id,btn){
-  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
-  document.getElementById('page-'+id).classList.add('active');
-  btn.classList.add('active');
-}
-function toggleLeg(el,name,odds){
-  const idx=parlayLegs.findIndex(l=>l.name===name);
-  if(idx>=0){parlayLegs.splice(idx,1);el.classList.remove('selected');}
-  else{parlayLegs.push({name,odds});el.classList.add('selected');}
+
+function doLogout() {
+  currentUser = null;
+  currentTier = 'free';
+  parlayLegs = [];
+
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('auth').style.display = 'flex';
+  document.getElementById('login-user').value = '';
+  document.getElementById('login-pass').value = '';
+  document.getElementById('login-err').textContent = '';
   renderLegs();
 }
-function renderLegs(){
-  const container=document.getElementById('builder-legs');
-  const summary=document.getElementById('builder-summary');
-  const btn=document.getElementById('build-btn');
-  if(!parlayLegs.length){container.innerHTML='<div class="builder-empty">Select picks to build your parlay</div>';summary.style.display='none';btn.disabled=true;btn.textContent='Add Legs to Build';return;}
-  container.innerHTML=parlayLegs.map(l=>`<div class="builder-leg"><span class="bl-name">${l.name}</span><span class="bl-odds">${l.odds}</span><button class="bl-remove" onclick="removeLeg('${l.name.replace(/'/g,&quot;\\\\&quot;+'&quot;')}')">✕</button></div>`).join('');
-  summary.style.display='';btn.disabled=false;btn.textContent=`Build ${parlayLegs.length}-Leg Parlay`;
+
+function showPage(id, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+  if (btn) btn.classList.add('active');
+}
+
+function toggleLeg(el, name, odds) {
+  const idx = parlayLegs.findIndex(l => l.name === name);
+  if (idx >= 0) {
+    parlayLegs.splice(idx, 1);
+    el.classList.remove('selected');
+  } else {
+    parlayLegs.push({ name, odds });
+    el.classList.add('selected');
+  }
+  renderLegs();
+}
+
+function escapeAttr(str) {
+  return String(str)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'");
+}
+
+function renderLegs() {
+  const container = document.getElementById('builder-legs');
+  const summary = document.getElementById('builder-summary');
+  const btn = document.getElementById('build-btn');
+
+  if (!parlayLegs.length) {
+    container.innerHTML = '<div class="builder-empty">Select picks to build your parlay</div>';
+    summary.style.display = 'none';
+    btn.disabled = true;
+    btn.textContent = 'Add Legs to Build';
+    return;
+  }
+
+  container.innerHTML = parlayLegs.map(l => `
+    <div class="builder-leg">
+      <span class="bl-name">${l.name}</span>
+      <span class="bl-odds">${l.odds}</span>
+      <button class="bl-remove" onclick="removeLeg('${escapeAttr(l.name)}')">✕</button>
+    </div>
+  `).join('');
+
+  summary.style.display = 'block';
+  btn.disabled = false;
+  btn.textContent = `Build ${parlayLegs.length}-Leg Parlay`;
   calcParlay();
 }
-function removeLeg(name){
-  parlayLegs=parlayLegs.filter(l=>l.name!==name);
-  document.querySelectorAll('.parlay-pick-item').forEach(el=>{if(el.classList.contains('selected')){const n=el.querySelector('.pp-name').textContent;if(name.includes(n.split('—')[0].trim()))el.classList.remove('selected');}});
+
+function removeLeg(name) {
+  parlayLegs = parlayLegs.filter(l => l.name !== name);
+  document.querySelectorAll('.parlay-pick-item').forEach(el => {
+    const n = el.querySelector('.pp-name')?.textContent || '';
+    const baseName = n.split('—')[0].trim();
+    if (name.includes(baseName)) {
+      el.classList.remove('selected');
+    }
+  });
   renderLegs();
 }
-function americanToDecimal(odds){const o=parseFloat(odds);return o>0?(o/100)+1:(100/Math.abs(o))+1;}
-function calcParlay(){
-  if(!parlayLegs.length)return;
-  const combined=parlayLegs.reduce((acc,l)=>acc*americanToDecimal(l.odds),1);
-  const wager=parseFloat(document.getElementById('wager-amt').value)||100;
-  const payout=(wager*combined).toFixed(2);
-  const comboAmerican=combined>=2?'+'+Math.round((combined-1)*100):'-'+Math.round(100/(combined-1));
-  document.getElementById('bs-legs').textContent=parlayLegs.length;
-  document.getElementById('bs-odds').textContent=comboAmerican;
-  document.getElementById('bs-payout').textContent='$'+payout;
+
+function americanToDecimal(odds) {
+  const o = parseFloat(odds);
+  return o > 0 ? (o / 100) + 1 : (100 / Math.abs(o)) + 1;
 }
-function submitParlay(){alert('Parlay locked in! Track it in the Tracker tab. Good luck! 🎯');}
-function openModal(){document.getElementById('upgrade-modal').classList.add('open');}
-function closeModal(){document.getElementById('upgrade-modal').classList.remove('open');}
-function selectPlan(plan){selectedPlan=plan;document.getElementById('plan-pro').classList.toggle('selected',plan==='pro');document.getElementById('plan-elite').classList.toggle('selected',plan==='elite');}
-function goCheckout(){alert('Redirecting to Stripe checkout for '+(selectedPlan==='pro'?'Pro ($25/mo)':'Elite ($45/mo)')+'...');}
-document.getElementById('upgrade-modal').addEventListener('click',function(e){if(e.target===this)closeModal();});
+
+function calcParlay() {
+  if (!parlayLegs.length) return;
+
+  const combined = parlayLegs.reduce((acc, l) => acc * americanToDecimal(l.odds), 1);
+  const wager = parseFloat(document.getElementById('wager-amt').value) || 100;
+  const payout = (wager * combined).toFixed(2);
+  const comboAmerican = combined >= 2
+    ? '+' + Math.round((combined - 1) * 100)
+    : '-' + Math.round(100 / (combined - 1));
+
+  document.getElementById('bs-legs').textContent = parlayLegs.length;
+  document.getElementById('bs-odds').textContent = comboAmerican;
+  document.getElementById('bs-payout').textContent = '$' + payout;
+}
+
+function submitParlay() {
+  alert('Parlay locked in! Track it in the Tracker tab. Good luck! 🎯');
+}
+
+function openModal() {
+  document.getElementById('upgrade-modal').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('upgrade-modal').classList.remove('open');
+}
+
+function selectPlan(plan) {
+  selectedPlan = plan;
+  document.getElementById('plan-pro').classList.toggle('selected', plan === 'pro');
+  document.getElementById('plan-elite').classList.toggle('selected', plan === 'elite');
+}
+
+function goCheckout() {
+  alert(
+    'Redirecting to Stripe checkout for ' +
+    (selectedPlan === 'pro' ? 'Pro ($25/mo)' : 'Elite ($45/mo)') +
+    '...'
+  );
+}
+
+document.getElementById('upgrade-modal').addEventListener('click', function (e) {
+  if (e.target === this) closeModal();
+});
+
+document.getElementById('login-user').addEventListener('keydown', function (e) {
+  if (e.key === 'Enter') doLogin();
+});
+
+document.getElementById('login-pass').addEventListener('keydown', function (e) {
+  if (e.key === 'Enter') doLogin();
+});
 </script>
 </body>
 </html>
