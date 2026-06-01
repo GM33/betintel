@@ -238,5 +238,9 @@
     <p>© <span id="year">2026</span> BetIntel. All rights reserved. &nbsp;|&nbsp; Always gamble responsibly. &nbsp;|&nbsp; <a href="#" onclick="window.scrollTo({top: 0, behavior: 'smooth'}); return false;">Back to top ↑</a></p>
   </footer>
   <script>document.getElementById('year').textContent = new Date().getFullYear();</script>
+
+  <!-- Supabase Integration -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>const u='https://znhkbywimqmivzklhrqa.supabase.co',k='sb_publishable_NBqEDTv3bSV160IWPNI7MA_L1yPpNYc',s=supabase.createClient(u,k);async function sub(e,t){try{const{data:a,error:r}=await s.from('email_subscribers').insert([{email:e,list_type:t}]);if(r)throw r;return{success:!0}}catch(e){return console.error('Error:',e),{success:!1,error:e.message}}}document.addEventListener('DOMContentLoaded',function(){const e=document.querySelector('[data-list="5am-picks"]');e&&e.addEventListener('submit',async function(e){e.preventDefault();const t=this.querySelector('input[type="email"]').value,a=await sub(t,'5am_picks');a.success?(alert('Success! Check your email.'),this.reset()):alert('Error: '+a.error)});const t=document.querySelector('[data-list="world-cup"]');t&&t.addEventListener('submit',async function(e){e.preventDefault();const t=this.querySelector('input[type="email"]').value,a=await sub(t,'world_cup');a.success?(alert('Success! You\'ll be notified.'),this.reset()):alert('Error: '+a.error)})});</script>
 </body>
 </html>
