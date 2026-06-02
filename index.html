@@ -62,10 +62,12 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .health-badge.cached{border-color:rgba(245,158,11,.4);color:var(--amber);}
 .health-badge.simulated{border-color:rgba(239,68,68,.4);color:var(--red);}
 .health-badge.loading{border-color:var(--border);color:var(--muted);}
+.health-badge.ws-live{border-color:rgba(124,58,237,.5);color:var(--purple);}
 .health-dot{
   width:7px;height:7px;border-radius:50%;flex-shrink:0;
 }
 .health-badge.live .health-dot{background:var(--green);animation:pulse-green 2s infinite;}
+.health-badge.ws-live .health-dot{background:var(--purple);animation:pulse-purple 2s infinite;}
 .health-badge.cached .health-dot{background:var(--amber);}
 .health-badge.simulated .health-dot{background:var(--red);}
 .health-badge.loading .health-dot{background:var(--muted);}
@@ -73,10 +75,14 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   0%,100%{box-shadow:0 0 0 0 rgba(34,197,94,.5);}
   50%{box-shadow:0 0 0 5px rgba(34,197,94,0);}
 }
+@keyframes pulse-purple{
+  0%,100%{box-shadow:0 0 0 0 rgba(124,58,237,.5);}
+  50%{box-shadow:0 0 0 5px rgba(124,58,237,0);}
+}
 .health-tooltip{
   display:none;position:absolute;top:calc(100% + 8px);right:0;
   background:var(--card);border:1px solid var(--border);border-radius:10px;
-  padding:12px 14px;min-width:210px;z-index:999;
+  padding:12px 14px;min-width:220px;z-index:999;
   font-size:11px;color:var(--muted);line-height:1.8;font-weight:500;
 }
 .health-badge:hover .health-tooltip{display:block;}
@@ -105,6 +111,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 }
 .ds-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;background:var(--muted);}
 .ds-dot.live{background:var(--green);}
+.ds-dot.ws{background:var(--purple);animation:pulse-purple 2s infinite;}
 .ds-dot.cache{background:var(--amber);}
 .ds-dot.stale{background:var(--red);}
 .ds-dot.loading{background:var(--muted);}
@@ -325,6 +332,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
         <span class="health-label" id="healthLabel">Connecting…</span>
         <div class="health-tooltip" id="healthTooltip">
           <div class="health-tooltip-row"><span>Mode</span><span class="health-tooltip-val" id="ttMode">—</span></div>
+          <div class="health-tooltip-row"><span>Feed</span><span class="health-tooltip-val" id="ttFeed">REST poll</span></div>
           <div class="health-tooltip-row"><span>Provider</span><span class="health-tooltip-val" id="ttProvider">—</span></div>
           <div class="health-tooltip-row"><span>Latency</span><span class="health-tooltip-val" id="ttLatency">—</span></div>
           <div class="health-tooltip-row"><span>Redis</span><span class="health-tooltip-val" id="ttRedis">—</span></div>
@@ -369,13 +377,11 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
         <div class="page-title">Arbitrage Opportunities</div>
         <div class="page-sub">Guaranteed profit plays — bet both sides across sportsbooks</div>
       </div>
-      <!-- Data source status bar -->
       <div class="data-source-bar" id="arbSourceBar">
         <div class="ds-dot loading" id="arbDsDot"></div>
         <span class="ds-label" id="arbDsLabel">Loading live odds…</span>
         <span class="ds-quota" id="arbDsQuota"></span>
       </div>
-      <!-- Quota warning -->
       <div class="quota-warn-banner" id="arbQuotaWarn">
         ⚠️ API quota below 100 requests remaining — odds may refresh less frequently.
       </div>
@@ -394,13 +400,11 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
         <div class="page-title">Line Shopping</div>
         <div class="page-sub">Best available lines across all major books — find +3 to +8 cents of extra value</div>
       </div>
-      <!-- Data source status bar -->
       <div class="data-source-bar" id="linesSourceBar">
         <div class="ds-dot loading" id="linesDsDot"></div>
         <span class="ds-label" id="linesDsLabel">Loading live odds…</span>
         <span class="ds-quota" id="linesDsQuota"></span>
       </div>
-      <!-- Quota warning -->
       <div class="quota-warn-banner" id="linesQuotaWarn">
         ⚠️ API quota below 100 requests remaining — odds may refresh less frequently.
       </div>
@@ -496,7 +500,19 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 
 <script>
 // ═══════════════════════════════════════════════════════════════════════
-// STATIC DATA (picks / tracker stay curated; arb + lines go live)
+// CONFIG — set BETINTEL_WS_URL via environment or window global
+// When deployed: set window.BETINTEL_WS_URL before this script, or
+// inject via your Vercel Edge config / meta tag.
+// ═══════════════════════════════════════════════════════════════════════
+const WS_URL    = (typeof window.BETINTEL_WS_URL !== 'undefined' && window.BETINTEL_WS_URL)
+                  ? window.BETINTEL_WS_URL
+                  : null;  // null = WS disabled, falls back to REST polling
+const WS_TOKEN  = (typeof window.BETINTEL_WS_TOKEN !== 'undefined')
+                  ? window.BETINTEL_WS_TOKEN
+                  : '';    // set server-side injected token here
+
+// ═══════════════════════════════════════════════════════════════════════
+// STATIC DATA
 // ═══════════════════════════════════════════════════════════════════════
 
 const PICKS = [
@@ -515,7 +531,6 @@ const TRACKER_ROWS = [
   {date:'May 29',player:'Curry 3PM Over',prop:'O/U 3.5',book:'Caesars',odds:'-108',wager:'$50',result:'win',pl:'+$46'},
 ];
 
-// Fallback static arb + lines shown when live fetch fails
 const STATIC_ARB = [
   {game:'Tampa Bay Rays vs New York Yankees',sport:'MLB · 7:05 PM ET',profit:'3.2%',legs:[{book:'DraftKings',pick:'Rays ML',odds:'+162',bet:'$381'},{book:'FanDuel',pick:'Yankees ML',odds:'-145',bet:'$619'}],total:'$1,000',guarantee:'$32',roi:'3.2%'},
   {game:'Golden State Warriors vs Los Angeles Lakers',sport:'NBA · 10:00 PM ET',profit:'2.8%',legs:[{book:'BetMGM',pick:'Warriors +4.5',odds:'-105',bet:'$490'},{book:'Caesars',pick:'Lakers -4.5',odds:'+112',bet:'$510'}],total:'$1,000',guarantee:'$28',roi:'2.8%'},
@@ -531,23 +546,162 @@ const STATIC_LINES = [
 // STATE
 // ═══════════════════════════════════════════════════════════════════════
 
-let currentUser = null;
-let currentTier = 'free';
+let currentUser  = null;
+let currentTier  = 'free';
 let selectedPlan = 'pro';
-let parlayLegs = [];
-let healthState = { mode: 'loading', quota: null };
+let parlayLegs   = [];
+let healthState  = { mode: 'loading', quota: null };
 let liveOddsCache = { events: null, dataSource: null, stale: false, quota: null, cachedAt: null };
 let healthPollTimer = null;
-let oddsPollTimer = null;
+let oddsPollTimer   = null;
+let wsMode          = false;  // true when WS is active and healthy
+
+// ═══════════════════════════════════════════════════════════════════════
+// BETINTEL ODDS CLIENT  (WebSocket with auto-reconnect + REST fallback)
+// ═══════════════════════════════════════════════════════════════════════
+
+const BetIntelOddsClient = (() => {
+  let ws          = null;
+  let reconnTimer = null;
+  let reconnDelay = 2000;
+  const MAX_DELAY = 30000;
+  let subscribedSports = new Set();
+  let onSnapshotCb = null;
+  let onDeltaCb    = null;
+  let onStatusCb   = null;
+  let active       = false;
+
+  function buildUrl() {
+    const url = new URL(WS_URL);
+    if (WS_TOKEN) url.searchParams.set('token', WS_TOKEN);
+    return url.toString();
+  }
+
+  function connect() {
+    if (!WS_URL) return;
+    active = true;
+    _connect();
+  }
+
+  function _connect() {
+    if (!active) return;
+    try {
+      ws = new WebSocket(buildUrl());
+    } catch (e) {
+      console.warn('[ws-client] could not create WebSocket:', e.message);
+      scheduleReconnect();
+      return;
+    }
+
+    ws.onopen = () => {
+      console.log('[ws-client] connected');
+      reconnDelay = 2000;
+      wsMode = true;
+      // Re-subscribe to all sports
+      for (const sport of subscribedSports) _send({ type: 'subscribe', sport });
+      if (onStatusCb) onStatusCb({ mode: 'ws-live', wsConnected: true });
+    };
+
+    ws.onmessage = (evt) => {
+      let msg;
+      try { msg = JSON.parse(evt.data); } catch { return; }
+
+      if (msg.type === 'snapshot' && onSnapshotCb) {
+        onSnapshotCb(msg);
+      } else if (msg.type === 'delta' && onDeltaCb) {
+        onDeltaCb(msg);
+      } else if (msg.type === 'status' && onStatusCb) {
+        onStatusCb(msg);
+      } else if (msg.type === 'ping') {
+        _send({ type: 'ping' }); // pong back
+      }
+    };
+
+    ws.onerror = (e) => {
+      console.warn('[ws-client] error', e.message || '');
+    };
+
+    ws.onclose = (evt) => {
+      wsMode = false;
+      console.log('[ws-client] closed', evt.code, evt.reason);
+      if (onStatusCb) onStatusCb({ mode: 'cached', wsConnected: false });
+      if (active) scheduleReconnect();
+    };
+  }
+
+  function scheduleReconnect() {
+    clearTimeout(reconnTimer);
+    reconnTimer = setTimeout(() => {
+      console.log('[ws-client] reconnecting in', reconnDelay, 'ms');
+      _connect();
+      reconnDelay = Math.min(reconnDelay * 2, MAX_DELAY);
+    }, reconnDelay);
+  }
+
+  function subscribe(sport) {
+    subscribedSports.add(sport);
+    if (ws && ws.readyState === WebSocket.OPEN) _send({ type: 'subscribe', sport });
+  }
+
+  function unsubscribe(sport) {
+    subscribedSports.delete(sport);
+    if (ws && ws.readyState === WebSocket.OPEN) _send({ type: 'unsubscribe', sport });
+  }
+
+  function _send(obj) {
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+  }
+
+  function disconnect() {
+    active = false;
+    clearTimeout(reconnTimer);
+    if (ws) { ws.close(1000, 'logout'); ws = null; }
+    wsMode = false;
+  }
+
+  function onSnapshot(cb)  { onSnapshotCb = cb; }
+  function onDelta(cb)     { onDeltaCb = cb;    }
+  function onStatus(cb)    { onStatusCb = cb;   }
+  function isConnected()   { return ws && ws.readyState === WebSocket.OPEN; }
+
+  return { connect, disconnect, subscribe, unsubscribe, onSnapshot, onDelta, onStatus, isConnected };
+})();
+
+// ═══════════════════════════════════════════════════════════════════════
+// DELTA PATCHER — apply WS deltas to cached snapshot without re-render
+// ═══════════════════════════════════════════════════════════════════════
+
+function applyDeltaToCache(deltaMsg) {
+  if (!liveOddsCache.events || !deltaMsg.deltas) return false;
+  let changed = false;
+  for (const d of deltaMsg.deltas) {
+    const ev = liveOddsCache.events.find(e => e.id === d.eventId);
+    if (!ev) continue;
+    for (const bm of (ev.bookmakers || [])) {
+      if (bm.bookmakerKey !== d.book) continue;
+      for (const mkt of (bm.markets || [])) {
+        if (mkt.marketKey !== d.market) continue;
+        const o = mkt.outcomes.find(x => x.name === d.outcome);
+        if (o && o.price !== d.price) {
+          o.price = d.price;
+          changed = true;
+        }
+      }
+    }
+  }
+  if (changed) liveOddsCache.cachedAt = deltaMsg.updatedAt;
+  return changed;
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 // HEALTH BADGE
 // ═══════════════════════════════════════════════════════════════════════
 
 async function pollHealth() {
+  if (wsMode) return; // skip REST health poll when WS is live
   try {
     const res = await fetch('/api/health', { cache: 'no-store' });
-    if (!res.ok && res.status !== 207) throw new Error('Health check failed');
+    if (!res.ok && res.status !== 207) throw new Error('health ' + res.status);
     const data = await res.json();
     applyHealthState(data);
   } catch (e) {
@@ -556,28 +710,35 @@ async function pollHealth() {
 }
 
 function applyHealthState(data) {
-  healthState.mode = data.mode || 'simulated';
+  healthState.mode  = data.mode || 'simulated';
   healthState.quota = data.quota || {};
 
-  const badge  = document.getElementById('healthBadge');
-  const label  = document.getElementById('healthLabel');
+  const badge = document.getElementById('healthBadge');
+  const label = document.getElementById('healthLabel');
 
-  badge.className = 'health-badge ' + healthState.mode;
+  const mode = wsMode ? 'ws-live' : healthState.mode;
+  badge.className = 'health-badge ' + mode;
 
-  const modeLabels = { live: '● Live', cached: '◑ Cached', simulated: '○ Simulated', loading: 'Connecting…' };
-  label.textContent = modeLabels[healthState.mode] || healthState.mode;
+  const modeLabels = {
+    'ws-live':   '⚡ WS Live',
+    live:        '● Live',
+    cached:      '◑ Cached',
+    simulated:   '○ Simulated',
+    loading:     'Connecting…',
+  };
+  label.textContent = modeLabels[mode] || mode;
 
-  // Tooltip
-  document.getElementById('ttMode').textContent      = healthState.mode.toUpperCase();
-  document.getElementById('ttProvider').textContent  = data.provider?.reachable ? '✓ Online' : '✗ Unreachable';
-  document.getElementById('ttLatency').textContent   = data.provider?.latencyMs != null ? data.provider.latencyMs + 'ms' : '—';
-  document.getElementById('ttRedis').textContent     = data.redis?.status === 'ok' ? '✓ Connected (' + (data.redis.latencyMs || '?') + 'ms)' : data.redis?.status || '—';
+  document.getElementById('ttMode').textContent     = mode.toUpperCase();
+  document.getElementById('ttFeed').textContent     = wsMode ? 'WebSocket push' : 'REST poll (30s)';
+  document.getElementById('ttProvider').textContent = data.provider?.reachable ? '✓ Online' : '✗ Unreachable';
+  document.getElementById('ttLatency').textContent  = data.provider?.latencyMs != null ? data.provider.latencyMs + 'ms' : '—';
+  document.getElementById('ttRedis').textContent    = data.redis?.status === 'ok'
+    ? '✓ Connected (' + (data.redis.latencyMs || '?') + 'ms)' : (data.redis?.status || '—');
   const qr = data.quota?.remaining;
-  document.getElementById('ttQuota').textContent     = qr != null ? qr + ' remaining' : '—';
-  document.getElementById('ttCache').textContent     = data.cache?.ageSecs != null ? data.cache.ageSecs + 's ago' : '—';
-  document.getElementById('ttChecked').textContent   = data.checkedAt ? new Date(data.checkedAt).toLocaleTimeString() : '—';
+  document.getElementById('ttQuota').textContent    = qr != null ? qr + ' remaining' : '—';
+  document.getElementById('ttCache').textContent    = data.cache?.ageSecs != null ? data.cache.ageSecs + 's ago' : '—';
+  document.getElementById('ttChecked').textContent  = data.checkedAt ? new Date(data.checkedAt).toLocaleTimeString() : '—';
 
-  // Show quota warning banners if < 100 remaining
   const lowQuota = qr != null && Number(qr) < 100;
   document.getElementById('arbQuotaWarn').classList.toggle('visible', lowQuota);
   document.getElementById('linesQuotaWarn').classList.toggle('visible', lowQuota);
@@ -589,25 +750,28 @@ function startHealthPoll() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// LIVE ODDS FETCH
+// LIVE ODDS (REST polling — used when WS is unavailable)
 // ═══════════════════════════════════════════════════════════════════════
 
 async function fetchLiveOdds(sport, markets) {
   const params = new URLSearchParams({ sport, markets });
   const res = await fetch('/api/odds?' + params.toString(), { cache: 'no-store' });
-  if (!res.ok) throw new Error('odds fetch ' + res.status);
+  if (!res.ok) throw new Error('odds ' + res.status);
   return res.json();
 }
 
 function updateSourceBar(barId, dotId, labelId, quotaId, { dataSource, stale, quota, cachedAt }) {
-  const dot   = document.getElementById(dotId);
-  const label = document.getElementById(labelId);
+  const dot     = document.getElementById(dotId);
+  const label   = document.getElementById(labelId);
   const quotaEl = document.getElementById(quotaId);
 
-  let dotClass = 'loading';
+  let dotClass  = 'loading';
   let labelHtml = 'Loading…';
 
-  if (dataSource === 'live') {
+  if (wsMode) {
+    dotClass  = 'ws';
+    labelHtml = '<strong>WebSocket live</strong> · sub-second updates · ' + (cachedAt ? new Date(cachedAt).toLocaleTimeString() : '');
+  } else if (dataSource === 'live') {
     dotClass  = 'live';
     labelHtml = '<strong>Live odds</strong> · updated ' + (cachedAt ? new Date(cachedAt).toLocaleTimeString() : 'just now');
   } else if (dataSource === 'cache' && !stale) {
@@ -633,22 +797,10 @@ function updateSourceBar(barId, dotId, labelId, quotaId, { dataSource, stale, qu
   }
 }
 
-// ── Build live line shopping cards from raw API events ──
 function buildLiveLineShopping(events) {
   if (!events || events.length === 0) return null;
   const cards = [];
-
   for (const ev of events.slice(0, 6)) {
-    // h2h market only for line shopping
-    for (const bm of (ev.bookmakers || [])) {
-      for (const mkt of (bm.markets || [])) {
-        if (mkt.marketKey !== 'h2h') continue;
-        // Only build a card per game, not per bookmaker
-        break;
-      }
-    }
-
-    // Collect all h2h lines for this game across books
     const bookLines = [];
     for (const bm of (ev.bookmakers || [])) {
       for (const mkt of (bm.markets || [])) {
@@ -658,94 +810,55 @@ function buildLiveLineShopping(events) {
       }
     }
     if (bookLines.length < 2) continue;
-
-    // Sort by best (highest) odds for home team
     bookLines.sort((a, b) => parseInt(b.o) - parseInt(a.o));
     bookLines[0].best = true;
     bookLines[bookLines.length - 1].worst = true;
-
     const spread = Math.abs(parseInt(bookLines[0].o) - parseInt(bookLines[bookLines.length-1].o));
-
-    cards.push({
-      player: ev.homeTeam + ' ML',
-      prop:   ev.homeTeam + ' vs ' + ev.awayTeam,
-      spread: 'Spread: ' + spread + '¢',
-      books:  bookLines.slice(0, 5),
-    });
+    cards.push({ player: ev.homeTeam + ' ML', prop: ev.homeTeam + ' vs ' + ev.awayTeam, spread: 'Spread: ' + spread + '¢', books: bookLines.slice(0, 5) });
   }
   return cards.length ? cards : null;
 }
 
-// ── Build live arb cards from raw API events ──
 function buildLiveArb(events) {
   if (!events || events.length === 0) return null;
   const arbs = [];
-
   for (const ev of events) {
-    // find h2h market with arb opportunity
     const bookH2H = {};
     for (const bm of (ev.bookmakers || [])) {
       for (const mkt of (bm.markets || [])) {
         if (mkt.marketKey !== 'h2h') continue;
         for (const o of mkt.outcomes) {
-          if (!bookH2H[o.name] || parseInt(o.price) > parseInt(bookH2H[o.name].price)) {
+          if (!bookH2H[o.name] || parseInt(o.price) > parseInt(bookH2H[o.name].price))
             bookH2H[o.name] = { price: o.price, book: bm.title };
-          }
         }
       }
     }
-
     const teams = Object.keys(bookH2H);
     if (teams.length < 2) continue;
-
-    // Implied probability sum
-    function impl(p) {
-      const n = Number(p);
-      if (n > 0) return 100 / (n + 100);
-      if (n < 0) return -n / (-n + 100);
-      return 1;
-    }
-
-    const totalImpl = teams.reduce((s, t) => s + impl(bookH2H[t].price), 0);
-    if (totalImpl >= 1) continue; // no arb
-
-    const profit = ((1 / totalImpl - 1) * 100).toFixed(2);
-    const stake = 1000;
-    const legs = teams.slice(0, 2).map(t => {
+    function impl(p) { const n=Number(p); if(n>0) return 100/(n+100); if(n<0) return -n/(-n+100); return 1; }
+    const totalImpl = teams.reduce((s,t) => s + impl(bookH2H[t].price), 0);
+    if (totalImpl >= 1) continue;
+    const profit = ((1/totalImpl-1)*100).toFixed(2);
+    const stake  = 1000;
+    const legs   = teams.slice(0,2).map(t => {
       const info = bookH2H[t];
-      const odds = info.price >= 0 ? '+' + info.price : String(info.price);
-      const bet  = '$' + Math.round(stake * impl(info.price) / totalImpl);
-      return { book: info.book, pick: t + ' ML', odds, bet };
+      const odds = info.price >= 0 ? '+'+info.price : String(info.price);
+      const bet  = '$'+Math.round(stake*impl(info.price)/totalImpl);
+      return { book: info.book, pick: t+' ML', odds, bet };
     });
-
-    arbs.push({
-      game: ev.awayTeam + ' vs ' + ev.homeTeam,
-      sport: ev.sportTitle + ' · ' + new Date(ev.commenceTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      profit: profit + '%',
-      legs,
-      total: '$' + stake,
-      guarantee: '$' + (stake * (1 / totalImpl - 1)).toFixed(0),
-      roi: profit + '%',
-    });
+    arbs.push({ game: ev.awayTeam+' vs '+ev.homeTeam, sport: ev.sportTitle+' · '+new Date(ev.commenceTime).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}), profit: profit+'%', legs, total: '$'+stake, guarantee: '$'+(stake*(1/totalImpl-1)).toFixed(0), roi: profit+'%' });
   }
-
   return arbs.length ? arbs : null;
 }
 
 async function loadLiveOdds() {
+  if (wsMode) return; // WS handles updates, skip REST poll
   try {
     const data = await fetchLiveOdds('baseball_mlb', 'h2h,spreads');
-    liveOddsCache = {
-      events: data.events,
-      dataSource: data.dataSource,
-      stale: data.stale,
-      quota: data.quota,
-      cachedAt: data.cachedAt,
-    };
-    renderLiveLines(data);
-    renderLiveArb(data);
+    liveOddsCache = { events: data.events, dataSource: data.dataSource, stale: data.stale, quota: data.quota, cachedAt: data.cachedAt };
+    renderLiveLines(liveOddsCache);
+    renderLiveArb(liveOddsCache);
   } catch (e) {
-    // Show static fallback with error state
     renderLiveLinesError();
     renderLiveArbError();
   }
@@ -756,14 +869,10 @@ function startOddsPoll() {
   oddsPollTimer = setInterval(loadLiveOdds, 30000);
 }
 
-// ── Live line shopping render ──
 function renderLiveLines(data) {
   const container = document.getElementById('linesList');
   updateSourceBar('linesSourceBar', 'linesDsDot', 'linesDsLabel', 'linesDsQuota', data);
-
-  const liveCards = buildLiveLineShopping(data.events);
-  const cards = liveCards || STATIC_LINES;
-
+  const cards = buildLiveLineShopping(data.events) || STATIC_LINES;
   container.innerHTML = cards.map(l => `
     <div class="line-card">
       <div class="line-header">
@@ -772,122 +881,98 @@ function renderLiveLines(data) {
       </div>
       <table class="line-table">
         <thead><tr><th>Sportsbook</th><th>Odds</th><th>Edge</th></tr></thead>
-        <tbody>${l.books.map(b => `
-          <tr>
-            <td>${b.b}</td>
-            <td class="${b.best ? 'best-val' : b.worst ? 'worst-val' : ''}">${b.o}</td>
-            <td>${b.best ? '✅ Best Line' : b.worst ? '⚠️ Avoid' : ''}</td>
-          </tr>
-        `).join('')}</tbody>
+        <tbody>${l.books.map(b=>`<tr><td>${b.b}</td><td class="${b.best?'best-val':b.worst?'worst-val':'}">${b.o}</td><td>${b.best?'✅ Best Line':b.worst?'⚠️ Avoid':''}</td></tr>`).join('')}</tbody>
       </table>
     </div>
   `).join('');
 }
 
 function renderLiveLinesError() {
-  updateSourceBar('linesSourceBar', 'linesDsDot', 'linesDsLabel', 'linesDsQuota',
-    { dataSource: 'none', stale: true, quota: null, cachedAt: null });
-  // Render static fallback silently
-  document.getElementById('linesList').innerHTML = STATIC_LINES.map(l => `
-    <div class="line-card">
-      <div class="line-header">
-        <div><div class="line-player">${l.player}</div><div class="line-prop">${l.prop}</div></div>
-        <span class="line-spread-badge">${l.spread}</span>
-      </div>
-      <table class="line-table">
-        <thead><tr><th>Sportsbook</th><th>Odds</th><th>Edge</th></tr></thead>
-        <tbody>${l.books.map(b => `
-          <tr>
-            <td>${b.b}</td>
-            <td class="${b.best ? 'best-val' : b.worst ? 'worst-val' : ''}">${b.o}</td>
-            <td>${b.best ? '✅ Best Line' : b.worst ? '⚠️ Avoid' : ''}</td>
-          </tr>
-        `).join('')}</tbody>
-      </table>
-    </div>
-  `).join('');
+  updateSourceBar('linesSourceBar','linesDsDot','linesDsLabel','linesDsQuota',{dataSource:'none',stale:true,quota:null,cachedAt:null});
+  document.getElementById('linesList').innerHTML = STATIC_LINES.map(l=>`
+    <div class="line-card"><div class="line-header"><div><div class="line-player">${l.player}</div><div class="line-prop">${l.prop}</div></div><span class="line-spread-badge">${l.spread}</span></div>
+    <table class="line-table"><thead><tr><th>Sportsbook</th><th>Odds</th><th>Edge</th></tr></thead>
+    <tbody>${l.books.map(b=>`<tr><td>${b.b}</td><td class="${b.best?'best-val':b.worst?'worst-val':''}">${b.o}</td><td>${b.best?'✅ Best Line':b.worst?'⚠️ Avoid':''}</td></tr>`).join('')}</tbody></table></div>`).join('');
 }
 
-// ── Live arb render ──
 function renderLiveArb(data) {
   const list = document.getElementById('arbList');
   const gate = document.getElementById('arbGate');
-  updateSourceBar('arbSourceBar', 'arbDsDot', 'arbDsLabel', 'arbDsQuota', data);
-
-  if (currentTier !== 'elite') {
-    list.innerHTML = '';
-    gate.style.display = '';
-    return;
-  }
+  updateSourceBar('arbSourceBar','arbDsDot','arbDsLabel','arbDsQuota', data);
+  if (currentTier !== 'elite') { list.innerHTML = ''; gate.style.display = ''; return; }
   gate.style.display = 'none';
-
-  const liveArbs = buildLiveArb(data.events);
-  const arbs = liveArbs || STATIC_ARB;
-
-  list.innerHTML = arbs.map(a => `
-    <div class="arb-card">
-      <div class="arb-top">
-        <div><div class="arb-game">${a.game}</div><div class="arb-sport">${a.sport}</div></div>
-        <div class="arb-profit">+${a.profit}</div>
-      </div>
-      <div class="arb-legs">
-        ${a.legs.map(l => `
-          <div class="arb-leg">
-            <div class="arb-book-name">${l.book}</div>
-            <div class="arb-pick">${l.pick}</div>
-            <div class="arb-odds">${l.odds}</div>
-            <div class="arb-bet">Bet: ${l.bet}</div>
-          </div>
-        `).join('')}
-      </div>
-      <div class="arb-footer">
-        <div class="arb-footer-item">Total Stake: <strong>${a.total}</strong></div>
-        <div class="arb-footer-item">Guaranteed: <strong>${a.guarantee}</strong></div>
-        <div class="arb-footer-item">ROI: <strong>${a.roi}</strong></div>
-      </div>
-    </div>
-  `).join('');
+  const arbs = buildLiveArb(data.events) || STATIC_ARB;
+  list.innerHTML = arbs.map(a=>`
+    <div class="arb-card"><div class="arb-top"><div><div class="arb-game">${a.game}</div><div class="arb-sport">${a.sport}</div></div><div class="arb-profit">+${a.profit}</div></div>
+    <div class="arb-legs">${a.legs.map(l=>`<div class="arb-leg"><div class="arb-book-name">${l.book}</div><div class="arb-pick">${l.pick}</div><div class="arb-odds">${l.odds}</div><div class="arb-bet">Bet: ${l.bet}</div></div>`).join('')}</div>
+    <div class="arb-footer"><div class="arb-footer-item">Total Stake: <strong>${a.total}</strong></div><div class="arb-footer-item">Guaranteed: <strong>${a.guarantee}</strong></div><div class="arb-footer-item">ROI: <strong>${a.roi}</strong></div></div></div>`).join('');
 }
 
 function renderLiveArbError() {
-  updateSourceBar('arbSourceBar', 'arbDsDot', 'arbDsLabel', 'arbDsQuota',
-    { dataSource: 'none', stale: true, quota: null, cachedAt: null });
-  const gate = document.getElementById('arbGate');
-  const list = document.getElementById('arbList');
-  if (currentTier !== 'elite') { list.innerHTML = ''; gate.style.display = ''; return; }
-  gate.style.display = 'none';
-  list.innerHTML = STATIC_ARB.map(a => `
-    <div class="arb-card">
-      <div class="arb-top">
-        <div><div class="arb-game">${a.game}</div><div class="arb-sport">${a.sport}</div></div>
-        <div class="arb-profit">+${a.profit}</div>
-      </div>
-      <div class="arb-legs">
-        ${a.legs.map(l => `<div class="arb-leg"><div class="arb-book-name">${l.book}</div><div class="arb-pick">${l.pick}</div><div class="arb-odds">${l.odds}</div><div class="arb-bet">Bet: ${l.bet}</div></div>`).join('')}
-      </div>
-      <div class="arb-footer">
-        <div class="arb-footer-item">Total Stake: <strong>${a.total}</strong></div>
-        <div class="arb-footer-item">Guaranteed: <strong>${a.guarantee}</strong></div>
-        <div class="arb-footer-item">ROI: <strong>${a.roi}</strong></div>
-      </div>
-    </div>
-  `).join('');
+  updateSourceBar('arbSourceBar','arbDsDot','arbDsLabel','arbDsQuota',{dataSource:'none',stale:true,quota:null,cachedAt:null});
+  const gate=document.getElementById('arbGate'); const list=document.getElementById('arbList');
+  if(currentTier!=='elite'){list.innerHTML='';gate.style.display='';return;}
+  gate.style.display='none';
+  list.innerHTML=STATIC_ARB.map(a=>`<div class="arb-card"><div class="arb-top"><div><div class="arb-game">${a.game}</div><div class="arb-sport">${a.sport}</div></div><div class="arb-profit">+${a.profit}</div></div><div class="arb-legs">${a.legs.map(l=>`<div class="arb-leg"><div class="arb-book-name">${l.book}</div><div class="arb-pick">${l.pick}</div><div class="arb-odds">${l.odds}</div><div class="arb-bet">Bet: ${l.bet}</div></div>`).join('')}</div><div class="arb-footer"><div class="arb-footer-item">Total Stake: <strong>${a.total}</strong></div><div class="arb-footer-item">Guaranteed: <strong>${a.guarantee}</strong></div><div class="arb-footer-item">ROI: <strong>${a.roi}</strong></div></div></div>`).join('');
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// WEB SOCKET (hooks wired — activate when WS server is deployed)
+// WEB SOCKET — init + wire callbacks
 // ═══════════════════════════════════════════════════════════════════════
 
 function initWebSocket() {
-  // Uncomment and set BETINTEL_WS_URL when WS server is live:
-  // window.BETINTEL_WS_URL = 'wss://your-ws-host.example.com';
-  // BetIntelOddsClient.onSnapshot(msg => { renderLiveLines(msg); renderLiveArb(msg); });
-  // BetIntelOddsClient.onDelta(msg => { /* apply deltas */ });
-  // BetIntelOddsClient.onStatus(({ mode }) => {
-  //   applyHealthState({ mode, provider: {}, redis: {}, quota: healthState.quota, cache: {} });
-  // });
-  // BetIntelOddsClient.connect();
-  // BetIntelOddsClient.subscribe('baseball_mlb');
+  if (!WS_URL) {
+    console.log('[ws-client] WS_URL not set — using REST polling only');
+    return;
+  }
+
+  // Snapshot: full event list from WS — use as primary data source
+  BetIntelOddsClient.onSnapshot(msg => {
+    liveOddsCache = {
+      events:     msg.events || [],
+      dataSource: msg.dataSource || 'cache',
+      stale:      msg.stale || false,
+      quota:      liveOddsCache.quota,
+      cachedAt:   msg.cachedAt || new Date().toISOString(),
+    };
+    renderLiveLines(liveOddsCache);
+    renderLiveArb(liveOddsCache);
+  });
+
+  // Delta: partial line changes — patch cache and re-render
+  BetIntelOddsClient.onDelta(msg => {
+    if (msg.deltaCount === 0) return;
+    const changed = applyDeltaToCache(msg);
+    if (changed) {
+      // Patch source bar timestamp only, no full re-render
+      liveOddsCache.cachedAt = msg.updatedAt;
+      updateSourceBar('linesSourceBar','linesDsDot','linesDsLabel','linesDsQuota', liveOddsCache);
+      updateSourceBar('arbSourceBar',  'arbDsDot',  'arbDsLabel',  'arbDsQuota',  liveOddsCache);
+      // Re-render line cards since prices changed
+      renderLiveLines(liveOddsCache);
+      renderLiveArb(liveOddsCache);
+    }
+  });
+
+  // Status: connection state changes
+  BetIntelOddsClient.onStatus(msg => {
+    if (msg.wsConnected === false) {
+      wsMode = false;
+      // Fall back to REST poll immediately
+      loadLiveOdds();
+    }
+    applyHealthState({
+      mode:     wsMode ? 'live' : 'cached',
+      provider: { reachable: wsMode },
+      redis:    {},
+      quota:    healthState.quota,
+      cache:    {},
+    });
+  });
+
+  BetIntelOddsClient.connect();
+  BetIntelOddsClient.subscribe('baseball_mlb');
+  BetIntelOddsClient.subscribe('basketball_nba');
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -895,7 +980,7 @@ function initWebSocket() {
 // ═══════════════════════════════════════════════════════════════════════
 
 function switchTab(tab) {
-  document.querySelectorAll('.auth-tab').forEach((t,i) => t.classList.toggle('active', (tab==='login'&&i===0)||(tab==='signup'&&i===1)));
+  document.querySelectorAll('.auth-tab').forEach((t,i)=>t.classList.toggle('active',(tab==='login'&&i===0)||(tab==='signup'&&i===1)));
   document.getElementById('loginForm').style.display  = tab==='login'  ? '' : 'none';
   document.getElementById('signupForm').style.display = tab==='signup' ? '' : 'none';
   document.getElementById('authErr').textContent = '';
@@ -914,7 +999,7 @@ function doSignup() {
   const e = document.getElementById('signupEmail').value.trim();
   const p = document.getElementById('signupPass').value;
   if (!u || !e || !p) { showAuthErr('All fields are required.'); return; }
-  if (p.length < 8)   { showAuthErr('Password must be at least 8 characters.'); return; }
+  if (p.length < 8) { showAuthErr('Password must be at least 8 characters.'); return; }
   currentUser = u; currentTier = 'free';
   enterApp();
 }
@@ -931,7 +1016,8 @@ function enterApp() {
 }
 
 function logout() {
-  currentUser = null; currentTier = 'free'; parlayLegs = [];
+  BetIntelOddsClient.disconnect();
+  currentUser = null; currentTier = 'free'; parlayLegs = []; wsMode = false;
   clearInterval(healthPollTimer);
   clearInterval(oddsPollTimer);
   document.getElementById('app').style.display  = 'none';
@@ -945,12 +1031,11 @@ function logout() {
 // ═══════════════════════════════════════════════════════════════════════
 
 function showPage(id, btn) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
   document.getElementById('page-'+id).classList.add('active');
   btn.classList.add('active');
-  // Refresh live data when user navigates to lines or arb
-  if (id === 'lines' || id === 'arb') loadLiveOdds();
+  if ((id==='lines'||id==='arb') && !wsMode) loadLiveOdds();
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -962,29 +1047,17 @@ function renderAll() {
   renderPicks();
   renderParlay();
   renderTracker();
-  // Lines and arb are driven by loadLiveOdds() — show skeletons first
   showLinesLoading();
   showArbLoading();
 }
 
 function showLinesLoading() {
-  document.getElementById('linesList').innerHTML = [1,2,3].map(() => `
-    <div class="odds-skeleton">
-      <div class="odds-skel-line" style="width:60%"></div>
-      <div class="odds-skel-line" style="width:40%"></div>
-      <div class="odds-skel-line" style="width:80%"></div>
-    </div>
-  `).join('');
+  document.getElementById('linesList').innerHTML = [1,2,3].map(()=>`<div class="odds-skeleton"><div class="odds-skel-line" style="width:60%"></div><div class="odds-skel-line" style="width:40%"></div><div class="odds-skel-line" style="width:80%"></div></div>`).join('');
 }
 
 function showArbLoading() {
   if (currentTier !== 'elite') return;
-  document.getElementById('arbList').innerHTML = [1,2].map(() => `
-    <div class="odds-skeleton">
-      <div class="odds-skel-line" style="width:70%"></div>
-      <div class="odds-skel-line" style="width:50%"></div>
-    </div>
-  `).join('');
+  document.getElementById('arbList').innerHTML = [1,2].map(()=>`<div class="odds-skeleton"><div class="odds-skel-line" style="width:70%"></div><div class="odds-skel-line" style="width:50%"></div></div>`).join('');
 }
 
 function updateBadge() {
@@ -997,12 +1070,9 @@ function renderPicks() {
   const grid = document.getElementById('picksGrid');
   const gate = document.getElementById('picksGate');
   const visible = currentTier === 'free' ? PICKS.slice(0,3) : PICKS;
-  grid.innerHTML = visible.map(p => `
+  grid.innerHTML = visible.map(p=>`
     <div class="pick-card ${p.edge}">
-      <div class="pick-row1">
-        <div><div class="pick-player">${p.player}</div><div class="pick-team">${p.team}</div></div>
-        <span class="edge-pill e-${p.edge}">${p.edgeLabel}</span>
-      </div>
+      <div class="pick-row1"><div><div class="pick-player">${p.player}</div><div class="pick-team">${p.team}</div></div><span class="edge-pill e-${p.edge}">${p.edgeLabel}</span></div>
       <div class="pick-prop">${p.prop}</div>
       <div class="pick-stats">
         <div class="pstat"><div class="pstat-val">${p.l5}</div><div class="pstat-lbl">L5 Avg</div></div>
@@ -1018,17 +1088,9 @@ function renderPicks() {
 
 function renderParlay() {
   const list = document.getElementById('parlayPicksList');
-  list.innerHTML = PICKS.map((p,i) => {
+  list.innerHTML = PICKS.map((p,i)=>{
     const inParlay = parlayLegs.find(l=>l.idx===i);
-    return `
-      <div class="parlay-pick-item ${inParlay?'selected':''}" onclick="toggleParlayLeg(${i})">
-        <div class="pp-left">
-          <div class="pp-name">${p.player}</div>
-          <div class="pp-prop">${p.prop.split('—')[0].trim()}</div>
-        </div>
-        <div class="pp-odds">${p.books[0].o}</div>
-      </div>
-    `;
+    return `<div class="parlay-pick-item ${inParlay?'selected':''}" onclick="toggleParlayLeg(${i})"><div class="pp-left"><div class="pp-name">${p.player}</div><div class="pp-prop">${p.prop.split('—')[0].trim()}</div></div><div class="pp-odds">${p.books[0].o}</div></div>`;
   }).join('');
   renderBuilderPanel();
 }
@@ -1036,81 +1098,54 @@ function renderParlay() {
 function toggleParlayLeg(idx) {
   const existing = parlayLegs.findIndex(l=>l.idx===idx);
   if (existing > -1) parlayLegs.splice(existing,1);
-  else { const p = PICKS[idx]; parlayLegs.push({idx, name:p.player, prop:p.prop.split('—')[0].trim(), odds:p.books[0].o}); }
+  else { const p=PICKS[idx]; parlayLegs.push({idx,name:p.player,prop:p.prop.split('—')[0].trim(),odds:p.books[0].o}); }
   renderParlay(); updateParlay();
 }
 
-function removeLeg(idx) {
-  parlayLegs = parlayLegs.filter(l=>l.idx!==idx);
-  renderParlay(); updateParlay();
-}
+function removeLeg(idx) { parlayLegs=parlayLegs.filter(l=>l.idx!==idx); renderParlay(); updateParlay(); }
 
 function renderBuilderPanel() {
-  const legs = document.getElementById('builderLegs');
-  const summary = document.getElementById('builderSummary');
-  const buildBtn = document.getElementById('buildBtn');
-  if (parlayLegs.length === 0) {
-    legs.innerHTML = '<div class="builder-empty">Add picks from the left →</div>';
-    summary.style.display = 'none';
-    buildBtn.disabled = true;
-    buildBtn.textContent = 'Add Picks to Build';
-    return;
-  }
-  legs.innerHTML = parlayLegs.map(l=>`
-    <div class="builder-leg">
-      <div class="bl-info"><div class="bl-name">${l.name}</div><div class="bl-odds">${l.odds}</div></div>
-      <button class="bl-remove" onclick="removeLeg(${l.idx})">×</button>
-    </div>
-  `).join('');
-  summary.style.display = '';
-  buildBtn.disabled = false;
-  buildBtn.textContent = `Build ${parlayLegs.length}-Leg Parlay`;
+  const legs=document.getElementById('builderLegs');
+  const summary=document.getElementById('builderSummary');
+  const buildBtn=document.getElementById('buildBtn');
+  if (!parlayLegs.length) { legs.innerHTML='<div class="builder-empty">Add picks from the left →</div>'; summary.style.display='none'; buildBtn.disabled=true; buildBtn.textContent='Add Picks to Build'; return; }
+  legs.innerHTML=parlayLegs.map(l=>`<div class="builder-leg"><div class="bl-info"><div class="bl-name">${l.name}</div><div class="bl-odds">${l.odds}</div></div><button class="bl-remove" onclick="removeLeg(${l.idx})">×</button></div>`).join('');
+  summary.style.display=''; buildBtn.disabled=false; buildBtn.textContent=`Build ${parlayLegs.length}-Leg Parlay`;
   updateParlay();
 }
 
-function amToDecimal(odds) {
-  const o = parseInt(odds);
-  return o > 0 ? (o/100)+1 : (100/Math.abs(o))+1;
-}
-function decimalToAm(dec) {
-  if (dec >= 2) return '+'+Math.round((dec-1)*100);
-  return Math.round(-100/(dec-1)).toString();
-}
-function updateParlay() {
+function amToDecimal(odds){const o=parseInt(odds);return o>0?(o/100)+1:(100/Math.abs(o))+1;}
+function decimalToAm(dec){if(dec>=2) return '+'+Math.round((dec-1)*100); return Math.round(-100/(dec-1)).toString();}
+function updateParlay(){
   if (!parlayLegs.length) return;
-  const dec = parlayLegs.reduce((acc,l) => acc * amToDecimal(l.odds), 1);
-  const comboOdds = decimalToAm(dec);
-  const wager = parseFloat(document.getElementById('wagerInput').value) || 0;
-  const toWin = wager > 0 ? '$'+(wager*(dec-1)).toFixed(2) : '—';
-  document.getElementById('bsLegs').textContent = parlayLegs.length;
-  document.getElementById('bsOdds').textContent = comboOdds;
-  document.getElementById('bsWin').textContent  = toWin;
+  const dec=parlayLegs.reduce((acc,l)=>acc*amToDecimal(l.odds),1);
+  const wager=parseFloat(document.getElementById('wagerInput').value)||0;
+  document.getElementById('bsLegs').textContent=parlayLegs.length;
+  document.getElementById('bsOdds').textContent=decimalToAm(dec);
+  document.getElementById('bsWin').textContent=wager>0?'$'+(wager*(dec-1)).toFixed(2):'—';
 }
 
-function submitParlay() { showToast(parlayLegs.length+'-leg parlay saved! Check your tracker.'); }
+function submitParlay(){showToast(parlayLegs.length+'-leg parlay saved! Check your tracker.');}
 
-function renderTracker() {
-  const wins = TRACKER_ROWS.filter(r=>r.result==='win').length;
-  const losses = TRACKER_ROWS.filter(r=>r.result==='loss').length;
-  const total = wins+losses;
-  const units = TRACKER_ROWS.reduce((a,r)=>{
-    if(r.result==='win') return a + parseFloat(r.pl.replace(/[+$]/g,''));
-    if(r.result==='loss') return a - parseFloat(r.wager.replace('$',''));
+function renderTracker(){
+  const wins=TRACKER_ROWS.filter(r=>r.result==='win').length;
+  const losses=TRACKER_ROWS.filter(r=>r.result==='loss').length;
+  const total=wins+losses;
+  const units=TRACKER_ROWS.reduce((a,r)=>{
+    if(r.result==='win') return a+parseFloat(r.pl.replace(/[+$]/g,''));
+    if(r.result==='loss') return a-parseFloat(r.wager.replace('$',''));
     return a;
   },0);
-  document.getElementById('trackerStats').innerHTML = `
+  document.getElementById('trackerStats').innerHTML=`
     <div class="tstat"><div class="tstat-val" style="color:var(--text)">${total}</div><div class="tstat-lbl">Total Bets</div></div>
     <div class="tstat"><div class="tstat-val" style="color:var(--green)">${wins}</div><div class="tstat-lbl">Wins</div></div>
     <div class="tstat"><div class="tstat-val" style="color:var(--text)">${total>0?((wins/total)*100).toFixed(0):0}%</div><div class="tstat-lbl">Win Rate</div></div>
     <div class="tstat"><div class="tstat-val" style="color:${units>=0?'var(--green)':'var(--red)'}">${units>=0?'+':''}$${units.toFixed(0)}</div><div class="tstat-lbl">Net P/L</div></div>
   `;
-  document.getElementById('trackerBody').innerHTML = TRACKER_ROWS.map(r=>`
-    <tr>
-      <td>${r.date}</td><td>${r.player}</td><td>${r.prop}</td>
-      <td>${r.book}</td><td>${r.odds}</td><td>${r.wager}</td>
-      <td class="result-${r.result}">${r.result.toUpperCase()}</td>
-      <td style="font-weight:700;color:${r.result==='win'?'var(--green)':r.result==='loss'?'var(--red)':'var(--gold)'}">${r.pl}</td>
-    </tr>
+  document.getElementById('trackerBody').innerHTML=TRACKER_ROWS.map(r=>`
+    <tr><td>${r.date}</td><td>${r.player}</td><td>${r.prop}</td><td>${r.book}</td><td>${r.odds}</td><td>${r.wager}</td>
+    <td class="result-${r.result}">${r.result.toUpperCase()}</td>
+    <td style="font-weight:700;color:${r.result==='win'?'var(--green)':r.result==='loss'?'var(--red)':'var(--gold)'}">${r.pl}</td></tr>
   `).join('');
 }
 
@@ -1118,28 +1153,27 @@ function renderTracker() {
 // MODAL
 // ═══════════════════════════════════════════════════════════════════════
 
-function openUpgradeModal()  { document.getElementById('upgradeModal').classList.add('open'); }
-function closeUpgradeModal() { document.getElementById('upgradeModal').classList.remove('open'); }
-function selectPlan(plan) {
-  selectedPlan = plan;
-  document.getElementById('planPro').classList.toggle('selected', plan==='pro');
-  document.getElementById('planElite').classList.toggle('selected', plan==='elite');
+function openUpgradeModal(){document.getElementById('upgradeModal').classList.add('open');}
+function closeUpgradeModal(){document.getElementById('upgradeModal').classList.remove('open');}
+function selectPlan(plan){
+  selectedPlan=plan;
+  document.getElementById('planPro').classList.toggle('selected',plan==='pro');
+  document.getElementById('planElite').classList.toggle('selected',plan==='elite');
 }
-function goCheckout() { closeUpgradeModal(); showToast('Redirecting to secure checkout…'); }
+function goCheckout(){closeUpgradeModal();showToast('Redirecting to secure checkout…');}
 
 // ═══════════════════════════════════════════════════════════════════════
 // UTIL
 // ═══════════════════════════════════════════════════════════════════════
 
-function showToast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  setTimeout(()=>t.classList.remove('show'), 3000);
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),3000);
 }
 
-document.getElementById('upgradeModal').addEventListener('click', function(e){
-  if(e.target === this) closeUpgradeModal();
+document.getElementById('upgradeModal').addEventListener('click',function(e){
+  if(e.target===this) closeUpgradeModal();
 });
 </script>
 </body>
