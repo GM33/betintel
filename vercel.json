@@ -1,6 +1,7 @@
 {
   "env": {
-    "TENNIS_SPORT_KEY": "tennis_atp_french_open"
+    "TENNIS_SPORT_KEY": "tennis_atp_french_open",
+    "TENNIS_SPORT_KEY_NOTES": "Roland Garros active May17-Jun7. Next: tennis_atp_wimbledon (Jun21-Jul12). Grass swing: tennis_atp_stuttgart (Jun6-14), tennis_atp_queens (Jun13-21). General ATP fallback: tennis_atp"
   },
   "rewrites": [
     { "source": "/", "destination": "/api/index" }
