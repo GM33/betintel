@@ -17,4 +17,5 @@ ENV PYTHONUNBUFFERED=1
 
 EXPOSE 8001
 
-CMD ["uvicorn", "mlb.api.main:app", "--host", "0.0.0.0", "--port", "8001"]
+# On first boot: run startup (migrate + seed + train + predict), then serve API
+CMD python mlb/startup.py && uvicorn mlb.api.main:app --host 0.0.0.0 --port ${PORT:-8001}

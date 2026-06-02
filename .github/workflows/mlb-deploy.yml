@@ -5,10 +5,11 @@ on:
     branches: [main]
     paths:
       - 'mlb/**'
+      - '.github/workflows/mlb-deploy.yml'
 
 jobs:
   deploy:
-    name: Trigger Railway Deploy
+    name: Deploy to Railway
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -17,14 +18,12 @@ jobs:
       - name: Install Railway CLI
         run: npm install -g @railway/cli
 
-      - name: Deploy API service
+      - name: Deploy MLB API
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: |
-          railway up --service betintel-mlb-api --detach
+        run: railway up --service betintel-mlb-api --detach
 
-      - name: Deploy Scheduler service
+      - name: Deploy MLB Scheduler
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: |
-          railway up --service betintel-mlb-scheduler --detach
+        run: railway up --service betintel-mlb-scheduler --detach
