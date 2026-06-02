@@ -1,6 +1,7 @@
 const Stripe = require('stripe');
 const { createClient } = require('@supabase/supabase-js');
 
+module.exports.config = { api: { bodyParser: false } };
 // NOTE: bodyParser must be disabled so we can read the raw body for Stripe signature verification.
 // In Vercel, this is done by NOT using Next.js API routes — the raw body is available via req stream.
 
