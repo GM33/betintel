@@ -1,0 +1,13 @@
+psycopg2-binary
+requests
+pandas
+numpy
+xgboost
+scikit-learn
+joblib
+scipy
+openai
+fastapi
+uvicorn
+apscheduler
+python-dotenv
