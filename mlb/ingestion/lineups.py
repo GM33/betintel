@@ -2,20 +2,16 @@ import requests
 import psycopg2
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from config import MLB_BASE, DATABASE_URL
+from mlb.config import DATABASE_URL
 import logging
 
-ET = ZoneInfo("America/New_York")
 log = logging.getLogger("betintel.ingestion.lineups")
+ET = ZoneInfo("America/New_York")
 
 def get_db():
     return psycopg2.connect(DATABASE_URL)
 
 def fetch_lineups(date: str = None):
-    """
-    Fetch confirmed batting lineups for all games on a given date.
-    Run 3 hours before first pitch and again 1 hour before.
-    """
     if not date:
         date = datetime.now(ET).strftime("%Y-%m-%d")
 
@@ -30,7 +26,7 @@ def fetch_lineups(date: str = None):
     conn.close()
 
     if not game_ids:
-        log.info("fetch_lineups: no games found in DB for date")
+        log.info("fetch_lineups: no games in DB for date")
         return
 
     for game_id in game_ids:
@@ -47,7 +43,6 @@ def fetch_lineups(date: str = None):
 
             home_lineup = teams.get("home", {}).get("battingOrder", [])
             away_lineup = teams.get("away", {}).get("battingOrder", [])
-
             lineup_confirmed = status in ("Pre-Game", "Warmup", "In Progress", "Final")
 
             conn = get_db()
@@ -59,17 +54,10 @@ def fetch_lineups(date: str = None):
                     lineup_confirmed = %s,
                     last_updated = %s
                 WHERE game_id = %s
-            """, (
-                home_lineup,
-                away_lineup,
-                lineup_confirmed,
-                datetime.utcnow(),
-                game_id
-            ))
+            """, (home_lineup, away_lineup, lineup_confirmed, datetime.utcnow(), game_id))
             conn.commit()
             cur.close()
             conn.close()
-            log.info(f"fetch_lineups: updated game {game_id}, confirmed={lineup_confirmed}")
-
+            log.info(f"fetch_lineups: updated {game_id}, confirmed={lineup_confirmed}")
         except Exception as e:
-            log.error(f"fetch_lineups: failed for game {game_id}: {e}")
+            log.error(f"fetch_lineups: failed for {game_id}: {e}")

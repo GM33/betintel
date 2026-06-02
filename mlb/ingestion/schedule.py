@@ -2,20 +2,16 @@ import requests
 import psycopg2
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from config import MLB_BASE, DATABASE_URL
+from mlb.config import MLB_BASE, DATABASE_URL
 import logging
 
-ET = ZoneInfo("America/New_York")
 log = logging.getLogger("betintel.ingestion.schedule")
+ET = ZoneInfo("America/New_York")
 
 def get_db():
     return psycopg2.connect(DATABASE_URL)
 
 def fetch_schedule(date: str = None):
-    """
-    Fetch today's MLB schedule with probable pitchers, venue, weather.
-    date: YYYY-MM-DD string. Defaults to today ET.
-    """
     if not date:
         date = datetime.now(ET).strftime("%Y-%m-%d")
 
@@ -25,7 +21,6 @@ def fetch_schedule(date: str = None):
         "date": date,
         "hydrate": "probablePitcher,weather,venue,linescore,team,status"
     }
-
     resp = requests.get(url, params=params, timeout=10)
     resp.raise_for_status()
     data = resp.json()
@@ -39,7 +34,6 @@ def fetch_schedule(date: str = None):
             away = teams.get("away", {})
             venue = game.get("venue", {})
             weather = game.get("weather", {})
-
             home_sp = home.get("probablePitcher", {})
             away_sp = away.get("probablePitcher", {})
 
@@ -70,17 +64,13 @@ def fetch_schedule(date: str = None):
             INSERT INTO game_context (
                 game_id, game_date, venue_id, venue_name,
                 home_team_id, away_team_id,
-                home_sp_id, away_sp_id,
-                sp_confirmed,
-                weather_temp_f, weather_conditions,
-                last_updated
+                home_sp_id, away_sp_id, sp_confirmed,
+                weather_temp_f, weather_conditions, last_updated
             ) VALUES (
                 %(game_id)s, %(game_date)s, %(venue_id)s, %(venue_name)s,
                 %(home_team_id)s, %(away_team_id)s,
-                %(home_sp_id)s, %(away_sp_id)s,
-                %(sp_confirmed)s,
-                %(weather_temp_f)s, %(weather_conditions)s,
-                %(last_updated)s
+                %(home_sp_id)s, %(away_sp_id)s, %(sp_confirmed)s,
+                %(weather_temp_f)s, %(weather_conditions)s, %(last_updated)s
             )
             ON CONFLICT (game_id) DO UPDATE SET
                 sp_confirmed = EXCLUDED.sp_confirmed,
@@ -90,7 +80,6 @@ def fetch_schedule(date: str = None):
                 weather_conditions = EXCLUDED.weather_conditions,
                 last_updated = EXCLUDED.last_updated
         """, row)
-
     conn.commit()
     cur.close()
     conn.close()
