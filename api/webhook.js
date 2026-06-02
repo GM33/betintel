@@ -20,7 +20,7 @@ function getTierFromPriceId(priceId) {
   return 'pro'; // safe fallback
 }
 
-module.exports = async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -142,5 +142,8 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: 'Handler failed' });
   }
 
-  return res.status(200).json({ received: true });
-};
+    return res.status(200).json({ received: true });
+}
+
+handler.config = { api: { bodyParser: false } };
+module.exports = handler;
