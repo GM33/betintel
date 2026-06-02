@@ -1,36 +1,31 @@
 // api/tennis-picks.js
-// BetIntel Tennis Picks Engine — v2
+// BetIntel Tennis Picks Engine — v2.1
 //
-// v2 upgrades over v1 (patched):
-//   1. No-vig pricing: edge is now measured vs fair market baseline, not raw implied prob
-//   2. Serve+return weighted match model: replaces hold-rate-only probability engine
-//   3. Prop-native models: each prop type has its own dedicated estimator
-//   4. Backtest scaffolding: calibration pipeline available via _lib/backtest.js
-//   5. All seven v1 bugs are retained-fixed; no regressions
+// v2.1 adds over v2:
+//   1. Auto-injects bookOddsOpp from live odds feed (tennis-odds-bridge.js)
+//      so no-vig removal fires automatically — no manual passing required
+//   2. Auto-logs every BET/MARGINAL pick to Redis (picks-store.js)
+//      feeding the calibration pipeline (api/calibration.js)
+//   3. Returns pickIds in response so caller can resolve outcomes later
 //
 // POST /api/tennis-picks
-// See request body schema at the bottom of this file.
+// See request body schema at bottom of this file.
 
 'use strict';
 
 const { noVig, edgeVsNoVig, auditMarket, americanToImplied } = require('./_lib/no-vig');
 const { buildMatchModel }                                     = require('./_lib/match-model');
 const { priceProp }                                           = require('./_lib/prop-models');
+const { enrichPropsWithOpp }                                  = require('./_lib/tennis-odds-bridge');
+const { logPicks }                                            = require('./_lib/picks-store');
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const MIN_EDGE_PTS               = 3;    // minimum pts vs no-vig baseline to flag BET
-const MIN_SAMPLE_MATCHES         = 12;
-const GOOD_SAMPLE_MATCHES        = 25;
+const MIN_EDGE_PTS                = 3;
+const MIN_SAMPLE_MATCHES          = 12;
+const GOOD_SAMPLE_MATCHES         = 25;
 const NARRATIVE_INFLATION_THRESHOLD = 18;
 
-// ─── Utilities (shared, kept local for API isolation) ─────────────────────────
-
-function impliedToAmerican(prob) {
-  if (prob <= 0 || prob >= 1) throw new Error('prob must be between 0 and 1');
-  return prob >= 0.5
-    ? -Math.round((prob / (1 - prob)) * 100)
-    : Math.round(((1 - prob) / prob) * 100);
-}
+// ─── Utilities ────────────────────────────────────────────────────────────────
 
 function auditPlayerStats(stats, surface, statSurface) {
   const flags = [];
@@ -48,21 +43,20 @@ function auditPlayerStats(stats, surface, statSurface) {
     if (reliability === 'HIGH') reliability = 'MEDIUM';
   }
   if (stats.holdRate && (stats.holdRate > 0.97 || stats.holdRate < 0.55)) {
-    flags.push(`OUTLIER_RISK: holdRate ${(stats.holdRate*100).toFixed(1)}% outside normal range`);
+    flags.push(`OUTLIER_RISK: holdRate ${(stats.holdRate * 100).toFixed(1)}% outside normal range`);
     if (reliability === 'HIGH') reliability = 'MEDIUM';
   }
   return { reliable: reliability !== 'LOW', reliability, flags, sampleSize: n };
 }
 
 function scoreFatigueAsymmetry(contextA, contextB) {
-  const diff    = (contextA.setsPlayedLast2Rounds || 0) - (contextB.setsPlayedLast2Rounds || 0);
+  const diff     = (contextA.setsPlayedLast2Rounds || 0) - (contextB.setsPlayedLast2Rounds || 0);
   const restDiff = (contextB.daysSinceLastMatch || 1) - (contextA.daysSinceLastMatch || 1);
   let fatiguedPlayer = 'EVEN', magnitude = 0;
   let edgeNote = 'No significant fatigue asymmetry detected.';
-
   if (diff >= 4) {
     fatiguedPlayer = 'A'; magnitude = diff;
-    edgeNote = `Player A played ${diff} more sets in last 2 rounds — significant conditioning disadvantage. Underdog ML likely underpriced by 4–8 pts.`;
+    edgeNote = `Player A played ${diff} more sets in last 2 rounds — significant conditioning disadvantage.`;
   } else if (diff <= -4) {
     fatiguedPlayer = 'B'; magnitude = Math.abs(diff);
     edgeNote = `Player B played ${Math.abs(diff)} more sets in last 2 rounds — significant conditioning disadvantage.`;
@@ -70,9 +64,8 @@ function scoreFatigueAsymmetry(contextA, contextB) {
     fatiguedPlayer = diff > 0 ? 'A' : 'B'; magnitude = Math.abs(diff);
     edgeNote = `Moderate fatigue edge: Player ${fatiguedPlayer} played ${magnitude} more sets in last 2 rounds.`;
   }
-  if (restDiff >= 2)  edgeNote += ` Player A also has ${Math.abs(restDiff)} fewer rest days.`;
+  if (restDiff >= 2)       edgeNote += ` Player A also has ${Math.abs(restDiff)} fewer rest days.`;
   else if (restDiff <= -2) edgeNote += ` Player B also has ${Math.abs(restDiff)} fewer rest days.`;
-
   return { fatiguedPlayer, setDiff: diff, restDiff, magnitude, edgeNote };
 }
 
@@ -87,13 +80,13 @@ function detectNarrativeInflation(currentImplied, priorImplied, triggerEvent) {
   };
 }
 
-function runHardFilters(prop, playerA, playerB, matchContext, fatigueScore, impliedProb) {
+function runHardFilters(prop, playerA, playerB, matchContext, fatigueScore, rawImplied) {
   const fails = [];
   if ((prop.side === 'B' || prop.side === 'underdog_plus') &&
       fatigueScore.fatiguedPlayer === 'B' && fatigueScore.magnitude >= 4) {
     fails.push('Underdog (B) played 4+ more sets than favorite — fatigue edge flipped.');
   }
-  if (prop.market === 'ml' && prop.side === 'B' && impliedProb > 0.40) {
+  if (prop.market === 'ml' && prop.side === 'B' && rawImplied > 0.40) {
     fails.push('Underdog ML implied probability already above 40% — upset likely priced in.');
   }
   if (playerA.statSurface && playerA.statSurface !== matchContext.surface)
@@ -102,65 +95,52 @@ function runHardFilters(prop, playerA, playerB, matchContext, fatigueScore, impl
     fails.push(`Player B stats from ${playerB.statSurface}, match on ${matchContext.surface}.`);
   if ((playerA.surfaceMatches || 0) < MIN_SAMPLE_MATCHES &&
       (playerB.surfaceMatches || 0) < MIN_SAMPLE_MATCHES) {
-    fails.push(`Both players have fewer than ${MIN_SAMPLE_MATCHES} surface matches. Insufficient data.`);
+    fails.push(`Both players have fewer than ${MIN_SAMPLE_MATCHES} surface matches.`);
   }
   return fails;
 }
 
-// ─── Core Prop Evaluator ──────────────────────────────────────────────────────
+// ─── Core Evaluator ───────────────────────────────────────────────────────────
 
 function evaluateProp(prop, playerA, playerB, matchContext, matchModel, fatigueScore) {
   const rawImplied = americanToImplied(prop.bookOdds);
 
-  // ── No-vig baseline ──────────────────────────────────────────────────────────
-  // For ML and two-sided markets, we need the opposite side odds.
-  // Prop object may carry bookOddsOpp for two-sided markets.
-  let noVigProb = rawImplied; // fallback: single-side (no vig removal possible)
+  // No-vig baseline
+  let noVigProb = rawImplied;
   let vigPct    = null;
   let noVigMethod = 'single-side-fallback';
-
   if (prop.bookOddsOpp && typeof prop.bookOddsOpp === 'number') {
     try {
       const nv = noVig(prop.bookOdds, prop.bookOddsOpp);
-      noVigProb   = nv.fairA;  // fairA = no-vig prob for the side we're evaluating
+      noVigProb   = nv.fairA;
       vigPct      = nv.vigPct;
       noVigMethod = nv.method;
     } catch (_) {}
   }
 
-  // ── Fair probability from prop model ────────────────────────────────────────
+  // Fair probability
   let priced = null;
-
   if (prop.market === 'ml') {
-    // ML uses match model directly
     const fairProb = prop.side === 'A' ? matchModel.fairProbA : matchModel.fairProbB;
-    const nvForML  = prop.side === 'A' ? noVigProb : (prop.bookOddsOpp ? noVig(prop.bookOddsOpp, prop.bookOdds).fairA : rawImplied);
     priced = {
       fairProb,
-      reasoning: [],
-      correlations: [],
+      reasoning: fatigueScore.magnitude >= 4 ? [fatigueScore.edgeNote] : [],
+      correlations: fatigueScore.magnitude >= 4
+        ? [{ tag: 'UNDERRATED', note: 'Fatigue asymmetry of 4+ sets — late-match serve degradation increases break frequency.' }]
+        : [],
       confidence: 'MEDIUM',
     };
-    if (fatigueScore.magnitude >= 4) {
-      priced.reasoning.push(fatigueScore.edgeNote);
-      priced.correlations.push({ tag: 'UNDERRATED', note: 'Fatigue asymmetry of 4+ sets — late-match serve degradation increases break frequency for fatigued player.' });
-    }
   } else {
     priced = priceProp(prop, matchModel, playerA, playerB);
   }
 
   if (!priced) {
-    return {
-      market: prop.market, side: prop.side, bookOdds: prop.bookOdds,
-      verdict: 'NO BET — market not supported',
-      reasoning: [`Market "${prop.market}" not yet supported.`],
-    };
+    return { market: prop.market, side: prop.side, bookOdds: prop.bookOdds,
+      verdict: `NO BET — market "${prop.market}" not supported.`, reasoning: [], correlations: [] };
   }
 
-  // ── Edge vs no-vig baseline (v2 core improvement) ────────────────────────────
   const edge = edgeVsNoVig(priced.fairProb, noVigProb);
 
-  // ── Confidence from audit + prop model ──────────────────────────────────────
   const auditA = auditPlayerStats(playerA, matchContext.surface, playerA.statSurface);
   const auditB = auditPlayerStats(playerB, matchContext.surface, playerB.statSurface);
   let confidence = priced.confidence || 'LOW';
@@ -170,44 +150,36 @@ function evaluateProp(prop, playerA, playerB, matchContext, matchModel, fatigueS
     else confidence = 'LOW';
   }
 
-  // ── Hard filters ─────────────────────────────────────────────────────────────
   const hardFilterFails = runHardFilters(prop, playerA, playerB, matchContext, fatigueScore, rawImplied);
   if (hardFilterFails.length > 0) {
     return {
       market: prop.market, side: prop.side, line: prop.line || null,
-      bookOdds: prop.bookOdds,
-      impliedProb:  `${(rawImplied*100).toFixed(1)}%`,
-      noVigProb:    `${(noVigProb*100).toFixed(1)}%`,
-      vigPct:       vigPct !== null ? `${vigPct}%` : 'N/A',
-      fairProb:     `${(priced.fairProb*100).toFixed(1)}%`,
-      edgePts:      `${edge > 0 ? '+' : ''}${edge}`,
-      confidence:   'LOW',
-      verdict:      'NO BET',
-      reasoning:    hardFilterFails.map(f => `HARD FILTER: ${f}`),
+      bookOdds: prop.bookOdds, bookOddsOpp: prop.bookOddsOpp || null,
+      impliedProb: `${(rawImplied*100).toFixed(1)}%`,
+      noVigProb:   `${(noVigProb*100).toFixed(1)}%`,
+      vigPct:      vigPct !== null ? `${vigPct}%` : 'N/A',
+      fairProb:    `${(priced.fairProb*100).toFixed(1)}%`,
+      edgePts:     `${edge > 0 ? '+' : ''}${edge}`,
+      confidence:  'LOW', verdict: 'NO BET',
+      reasoning:   hardFilterFails.map(f => `HARD FILTER: ${f}`),
       correlations: [],
     };
   }
 
-  // ── Verdict ───────────────────────────────────────────────────────────────────
-  const verdict = edge >= MIN_EDGE_PTS
-    ? 'BET'
-    : edge >= 2
-    ? 'MARGINAL — edge below 3pt threshold'
+  const verdict = edge >= MIN_EDGE_PTS ? 'BET'
+    : edge >= 2 ? 'MARGINAL — edge below 3pt threshold'
     : 'NO BET';
 
   return {
-    market:      prop.market,
-    side:        prop.side,
-    line:        prop.line || null,
-    bookOdds:    prop.bookOdds,
-    impliedProb: `${(rawImplied*100).toFixed(1)}%`,
-    noVigProb:   `${(noVigProb*100).toFixed(1)}%`,
-    vigPct:      vigPct !== null ? `${vigPct}%` : 'N/A (single-side)',
+    market: prop.market, side: prop.side, line: prop.line || null,
+    bookOdds: prop.bookOdds, bookOddsOpp: prop.bookOddsOpp || null,
+    impliedProb:  `${(rawImplied*100).toFixed(1)}%`,
+    noVigProb:    `${(noVigProb*100).toFixed(1)}%`,
+    vigPct:       vigPct !== null ? `${vigPct}%` : 'N/A (single-side)',
     noVigMethod,
-    fairProb:    `${(priced.fairProb*100).toFixed(1)}%`,
-    edgePts:     `${edge > 0 ? '+' : ''}${edge}`,
-    confidence,
-    verdict,
+    fairProb:     `${(priced.fairProb*100).toFixed(1)}%`,
+    edgePts:      `${edge > 0 ? '+' : ''}${edge}`,
+    confidence, verdict,
     reasoning:    priced.reasoning,
     correlations: priced.correlations,
   };
@@ -222,41 +194,40 @@ function evaluateProp(prop, playerA, playerB, matchContext, matchModel, fatigueS
  * {
  *   match: {
  *     surface: 'clay'|'grass'|'hard'|'indoor_hard',
- *     format: 'bo3'|'bo5',
- *     tournament: string,
- *     round: string,
- *     narrativeTrigger?: string,  // e.g. 'Beat Djokovic R3'
+ *     format:  'bo3'|'bo5',
+ *     tournament?: string,
+ *     round?: string,
+ *     narrativeTrigger?: string,
+ *     sportKey?: string,   // override Odds API sport key for auto-enrichment
  *   },
  *   playerA: {
  *     name: string,
- *     holdRate?: number,            // fallback if serve stats absent
+ *     holdRate?: number,
  *     surfaceMatches?: number,
  *     statSurface?: string,
- *     // Full serve stats (preferred over holdRate):
- *     firstServePct?: number,       // e.g. 0.62
- *     firstServeWonPct?: number,    // e.g. 0.72
- *     secondServeWonPct?: number,   // e.g. 0.52
- *     aceRatePerGame?: number,      // aces per service game, e.g. 0.55
- *     dfRatePerGame?: number,       // double faults per service game, e.g. 0.28
- *     // Return stats (improves accuracy):
- *     returnPtsWonOnFirst?: number, // e.g. 0.28
- *     returnPtsWonOnSecond?: number,// e.g. 0.52
- *     breakPct?: number,            // e.g. 0.22
- *     // Prop-specific:
- *     injuryFlag?: string,          // free text, e.g. 'hamstring tightness'
+ *     firstServePct?: number,
+ *     firstServeWonPct?: number,
+ *     secondServeWonPct?: number,
+ *     aceRatePerGame?: number,
+ *     dfRatePerGame?: number,
+ *     returnPtsWonOnFirst?: number,
+ *     returnPtsWonOnSecond?: number,
+ *     breakPct?: number,
+ *     injuryFlag?: string,
  *   },
  *   playerB: { ...same shape },
  *   contextA?: { setsPlayedLast2Rounds?: number, daysSinceLastMatch?: number },
  *   contextB?: { ...same shape },
- *   priorOddsA?: number,            // American odds 24–48h ago for narrative inflation check
+ *   priorOddsA?: number,
+ *   autoEnrichOdds?: boolean,  // default true — auto-inject bookOddsOpp from live feed
  *   props: [
  *     {
  *       market: 'ml'|'total_games'|'total_sets'|'set_spread'|
  *               'player_aces'|'player_double_faults'|'total_breaks'|'player_games_won',
- *       side: string,               // 'A'|'B'|'over'|'under'|'underdog_plus'|'favorite_minus'|'player_a'|'player_b'
- *       line?: number,              // required for total markets
- *       bookOdds: number,           // American odds for THIS side
- *       bookOddsOpp?: number,       // American odds for opposite side (enables vig removal)
+ *       side: string,
+ *       line?: number,
+ *       bookOdds: number,
+ *       bookOddsOpp?: number,  // auto-injected if autoEnrichOdds=true and event found
  *     }
  *   ]
  * }
@@ -269,55 +240,81 @@ module.exports = async function handler(req, res) {
   catch { return res.status(400).json({ error: 'Invalid JSON body.' }); }
 
   const { match, playerA, playerB, contextA, contextB, priorOddsA, props } = body || {};
+  const autoEnrich = body?.autoEnrichOdds !== false; // default true
 
   const missing = [];
-  if (!match?.surface)   missing.push('match.surface');
-  if (!match?.format)    missing.push('match.format');
-  if (!playerA)          missing.push('playerA');
-  if (!playerB)          missing.push('playerB');
+  if (!match?.surface) missing.push('match.surface');
+  if (!match?.format)  missing.push('match.format');
+  if (!playerA)        missing.push('playerA');
+  if (!playerB)        missing.push('playerB');
   if (!Array.isArray(props) || !props.length) missing.push('props[]');
   if (missing.length) return res.status(400).json({ error: 'Missing required fields.', missingFields: missing });
 
-  // ── Build match model once, reuse for all props ──────────────────────────────
+  // ── Step 1: Auto-enrich bookOddsOpp from live odds feed ───────────────────
+  let enrichedProps = props;
+  let oddsEnrichment = { attempted: false, eventFound: false, bookmakerUsed: null, vigAudit: null };
+
+  if (autoEnrich && playerA.name && playerB.name) {
+    try {
+      const bridgeResult = await enrichPropsWithOpp(
+        playerA.name, playerB.name, props, match.sportKey
+      );
+      enrichedProps = bridgeResult.props;
+      oddsEnrichment = {
+        attempted:     true,
+        eventFound:    bridgeResult.eventFound,
+        eventId:       bridgeResult.eventId || null,
+        bookmakerUsed: bridgeResult.bookmakerUsed || null,
+        vigAudit:      bridgeResult.vigAudit || null,
+        error:         bridgeResult.error || null,
+      };
+    } catch (err) {
+      oddsEnrichment = { attempted: true, eventFound: false, error: err.message };
+    }
+  }
+
+  // ── Step 2: Build match model ──────────────────────────────────────────────
   const fatigueScore = scoreFatigueAsymmetry(
     { setsPlayedLast2Rounds: contextA?.setsPlayedLast2Rounds || 0, daysSinceLastMatch: contextA?.daysSinceLastMatch || 1 },
     { setsPlayedLast2Rounds: contextB?.setsPlayedLast2Rounds || 0, daysSinceLastMatch: contextB?.daysSinceLastMatch || 1 }
   );
 
-  const matchModel = buildMatchModel(playerA, playerB, match.surface, match.format, fatigueScore);
+  const matchModel   = buildMatchModel(playerA, playerB, match.surface, match.format, fatigueScore);
   const matchContext = { surface: match.surface, format: match.format };
 
-  // ── Audit ─────────────────────────────────────────────────────────────────────
+  // ── Step 3: Data audit ────────────────────────────────────────────────────
   const auditA = auditPlayerStats(playerA, match.surface, playerA.statSurface);
   const auditB = auditPlayerStats(playerB, match.surface, playerB.statSurface);
 
-  // ── Narrative inflation check ────────────────────────────────────────────────
+  // ── Step 4: Narrative inflation check ────────────────────────────────────
   let inflationCheck = null;
   if (priorOddsA) {
     try {
-      const currentML = props.find(p => p.market === 'ml' && (p.side === 'A' || p.side === 'B'));
+      const currentML = enrichedProps.find(p => p.market === 'ml');
       if (currentML) {
-        const currentImplied = americanToImplied(currentML.bookOdds);
-        const priorImplied   = americanToImplied(priorOddsA);
-        inflationCheck = detectNarrativeInflation(currentImplied, priorImplied, match.narrativeTrigger || 'recent notable win');
+        inflationCheck = detectNarrativeInflation(
+          americanToImplied(currentML.bookOdds),
+          americanToImplied(priorOddsA),
+          match.narrativeTrigger || 'recent notable win'
+        );
       }
     } catch (_) {}
   }
 
-  // ── Market-level vig audit (if ML both sides provided) ───────────────────────
-  let marketVigAudit = null;
-  const mlA = props.find(p => p.market === 'ml' && p.side === 'A');
-  const mlB = props.find(p => p.market === 'ml' && p.side === 'B');
-  if (mlA?.bookOddsOpp || mlB?.bookOddsOpp || (mlA && mlB)) {
-    try {
-      const oddsA = mlA?.bookOdds;
-      const oddsB = mlB?.bookOdds || mlA?.bookOddsOpp;
-      if (oddsA && oddsB) marketVigAudit = auditMarket(oddsA, oddsB, matchModel.fairProbA);
-    } catch (_) {}
+  // ── Step 5: Market vig audit ──────────────────────────────────────────────
+  let marketVigAudit = oddsEnrichment.vigAudit || null;
+  if (!marketVigAudit) {
+    const mlA = enrichedProps.find(p => p.market === 'ml' && p.side === 'A');
+    const mlB = enrichedProps.find(p => p.market === 'ml' && p.side === 'B');
+    const oddsA = mlA?.bookOdds;
+    const oddsB = mlB?.bookOdds || mlA?.bookOddsOpp;
+    if (oddsA && oddsB) {
+      try { marketVigAudit = auditMarket(oddsA, oddsB, matchModel.fairProbA); } catch (_) {}
+    }
   }
 
-  // ── Evaluate all props ────────────────────────────────────────────────────────
-  const results = props.map(prop => {
+  // ── Step 6: Evaluate all props ────────────────────────────────────────────
+  const results = enrichedProps.map(prop => {
     const r = evaluateProp(prop, playerA, playerB, matchContext, matchModel, fatigueScore);
     if (prop.market === 'ml' && inflationCheck?.inflated) {
       r.reasoning = [inflationCheck.warning, ...(r.reasoning || [])];
@@ -325,48 +322,74 @@ module.exports = async function handler(req, res) {
     return r;
   });
 
-  // ── Summary ───────────────────────────────────────────────────────────────────
+  // ── Step 7: Auto-log BET + MARGINAL picks to Redis ────────────────────────
+  const generatedAt = new Date().toISOString();
+  let pickIds = [];
+  const logMeta = {
+    matchId:    oddsEnrichment.eventId || `${playerA.name}-vs-${playerB.name}-${generatedAt.slice(0,10)}`,
+    playerA:    playerA.name || 'Player A',
+    playerB:    playerB.name || 'Player B',
+    surface:    match.surface,
+    format:     match.format,
+    tournament: match.tournament || '',
+    round:      match.round || '',
+    generatedAt,
+  };
+  try {
+    pickIds = await logPicks(logMeta, results, matchModel);
+  } catch (err) {
+    console.warn('[tennis-picks] picks logging failed:', err.message);
+  }
+
+  // ── Step 8: Build response ────────────────────────────────────────────────
   const bets     = results.filter(r => r.verdict === 'BET');
   const marginal = results.filter(r => r.verdict?.startsWith('MARGINAL'));
   const noBets   = results.filter(r => r.verdict?.startsWith('NO BET'));
 
   return res.status(200).json({
     meta: {
-      generatedAt: new Date().toISOString(),
-      engineVersion: 'v2-serve-return-no-vig',
+      generatedAt,
+      engineVersion: 'v2.1-auto-vig-logged',
       match: {
-        playerA: playerA.name || 'Player A',
-        playerB: playerB.name || 'Player B',
-        surface: match.surface,
-        format:  match.format,
+        playerA:    playerA.name || 'Player A',
+        playerB:    playerB.name || 'Player B',
+        surface:    match.surface,
+        format:     match.format,
         tournament: match.tournament || '',
-        round:   match.round || '',
+        round:      match.round || '',
       },
     },
     matchModel: {
-      holdA:     `${(matchModel.holdA*100).toFixed(1)}%`,
-      holdB:     `${(matchModel.holdB*100).toFixed(1)}%`,
-      pAWinsSet: `${(matchModel.pAWinsSet*100).toFixed(1)}%`,
-      fairProbA: `${(matchModel.fairProbA*100).toFixed(1)}%`,
-      fairProbB: `${(matchModel.fairProbB*100).toFixed(1)}%`,
-      avgSets:   matchModel.avgSets.toFixed(2),
+      holdA:        `${(matchModel.holdA*100).toFixed(1)}%`,
+      holdB:        `${(matchModel.holdB*100).toFixed(1)}%`,
+      pAWinsSet:    `${(matchModel.pAWinsSet*100).toFixed(1)}%`,
+      fairProbA:    `${(matchModel.fairProbA*100).toFixed(1)}%`,
+      fairProbB:    `${(matchModel.fairProbB*100).toFixed(1)}%`,
+      avgSets:      matchModel.avgSets.toFixed(2),
       modelVersion: matchModel.modelVersion,
     },
     audit: {
       playerA: { name: playerA.name, ...auditA },
       playerB: { name: playerB.name, ...auditB },
     },
-    fatigueAnalysis:  fatigueScore,
+    oddsEnrichment,
+    fatigueAnalysis:   fatigueScore,
     narrativeInflation: inflationCheck,
     marketVigAudit,
     picks: results,
+    pickIds,
     summary: {
       totalProps:  results.length,
       bets:        bets.length,
       marginal:    marginal.length,
       noBets:      noBets.length,
       topBets:     bets.map(b => `${b.market} ${b.side} (${b.edgePts}pts vs no-vig, ${b.confidence})`),
-      vigNote:     marketVigAudit ? `Market vig: ${marketVigAudit.vigPct}% (${marketVigAudit.method}). Edge measured vs no-vig baseline.` : 'Provide bookOddsOpp on props for vig removal.',
+      loggedPicks: pickIds.length,
+      vigNote:     marketVigAudit
+        ? `Market vig: ${marketVigAudit.vigPct}% (${marketVigAudit.method}). Edge vs no-vig baseline.`
+        : oddsEnrichment.eventFound
+          ? 'Event found in live feed but vig audit unavailable.'
+          : 'Event not found in live feed — pass bookOddsOpp manually for vig removal.',
       marketEfficiencyNote: bets.length === 0 && marginal.length === 0
         ? 'No edge meets 3pt threshold vs no-vig baseline. Pass all markets.'
         : null,
