@@ -1,96 +1,103 @@
-# BetIntel WebSocket Server — Deployment Guide
+# BetIntel WS — Railway Deployment Guide
 
 ## Architecture
 
 ```
-The Odds API
+The-Odds-API
     │
     ▼
-[ws/ingest.js]  ──── Redis SET ────▶  [betintel:odds:{sport}:h2h]
-    │                                          │
-    └──── Redis PUBLISH ──▶  [betintel:delta:{sport}]  ◀── [api/odds.js REST]
-                                       │
-                                  [ws/server.js]
-                                       │
-                              WebSocket broadcast
-                                       │
-                               Browser clients
+[ws-ingest] ──PUBLISH──► Redis ──SUBSCRIBE──► [ws-server] ──push──► Browser
 ```
 
-## Quick Start (local)
+## Step 1 — Create Railway Project
+
+1. Go to https://railway.app → New Project → Deploy from GitHub
+2. Select `GM33/betintel`
+3. DO NOT auto-deploy yet
+
+## Step 2 — Add Redis Plugin
+
+1. Inside project → + New → Database → Add Redis
+2. Note the `REDIS_URL` from Variables tab (format: `redis://default:pw@redis.railway.internal:6379`)
+
+## Step 3 — Deploy WS Server (Service 1: ws-server)
+
+1. + New → GitHub Repo → GM33/betintel
+2. Root Directory: `ws`
+3. Start Command: `node server.js` (auto-detected from railway.toml)
+4. Set environment variables:
+
+```
+REDIS_URL       = <from Step 2>
+WS_AUTH_SECRET  = <run: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))">
+PORT            = 8080
+NODE_ENV        = production
+```
+
+5. Deploy → wait for green health check at /health
+6. Settings → Networking → Generate Domain
+7. Copy domain → your WS URL is: `wss://<domain>/ws`
+
+## Step 4 — Deploy Ingest Worker (Service 2: ws-ingest)
+
+1. + New → GitHub Repo → GM33/betintel (same repo, second service)
+2. Root Directory: `ws`
+3. **Override** Start Command: `node ingest.js`
+4. Set environment variables:
+
+```
+REDIS_URL       = <same as Step 2>
+ODDS_API_KEY    = <your The-Odds-API key from https://the-odds-api.com>
+WS_AUTH_SECRET  = <same secret as Step 3>
+NODE_ENV        = production
+```
+
+5. Deploy → check logs for "Ingest cycle complete"
+
+## Step 5 — Wire Vercel Frontend
+
+In Vercel dashboard → Settings → Environment Variables:
+
+```
+BETINTEL_WS_URL   = wss://<railway-domain>/ws
+WS_AUTH_SECRET    = <same secret from Step 3>
+```
+
+Vercel auto-generates the HMAC token at request time in api/index.js.
+No token is stored — it's derived fresh every request.
+
+## Step 6 — Verify
 
 ```bash
-cd ws
-cp .env.example .env
-# fill in REDIS_URL, ODDS_API_KEY, WS_AUTH_SECRET
-npm install
+# 1. Health check
+curl https://<railway-domain>/health
 
-# Terminal 1: WS server
-npm start
+# 2. WebSocket test (install wscat: npm i -g wscat)
+# Get token first:
+node -e "
+  const c=require('crypto');
+  console.log(c.createHmac('sha256','YOUR_SECRET').update('betintel-ws-auth').digest('base64'));
+"
+wscat -c "wss://<railway-domain>/ws?token=<token>"
+# Expect: {\"type\":\"snapshot\",\"events\":[...]}
 
-# Terminal 2: Ingest worker
-npm run ingest
+# 3. Trigger ingest manually
+railway run --service ws-ingest node ingest.js
 ```
 
-## Production: Railway (recommended)
+## Environment Variable Reference
 
-1. Create a new Railway project
-2. Add two services from the `ws/` directory:
-   - **ws-server**: `node server.js`
-   - **ws-ingest**: `node ingest.js`
-3. Add a Redis plugin to the project
-4. Set env vars on both services (copy from `.env.example`)
-5. Set `WS_ALLOWED_ORIGINS` to your Vercel URL
-6. Copy the public URL of `ws-server` → use as `BETINTEL_WS_URL` in your frontend
+| Variable | Service | Required | Description |
+|---|---|---|---|
+| REDIS_URL | ws-server, ws-ingest | ✅ | Railway Redis private URL |
+| WS_AUTH_SECRET | ws-server, ws-ingest, Vercel | ✅ | 32-byte hex secret for HMAC auth |
+| ODDS_API_KEY | ws-ingest | ✅ | The-Odds-API key |
+| PORT | ws-server | optional | Default 8080 |
+| BETINTEL_WS_URL | Vercel | ✅ | Full wss:// URL to ws-server |
+| NODE_ENV | both | optional | Set to production |
 
-## Production: Fly.io
+## Upgrade Note
 
-```bash
-# From repo root
-cd ws
-flyctl launch --config fly.toml --dockerfile Dockerfile
-flyctl secrets set REDIS_URL=... ODDS_API_KEY=... WS_AUTH_SECRET=...
-flyctl deploy
-```
-
-Run the ingest worker as a **separate Fly Machine**:
-```bash
-flyctl machine run . --dockerfile Dockerfile --command "node ingest.js" \
-  --env REDIS_URL=... --env ODDS_API_KEY=...
-```
-
-## Generating WS_AUTH_SECRET
-
-```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-```
-
-The frontend token is computed as:
-```js
-const crypto = require('crypto');
-const token = crypto
-  .createHmac('sha256', WS_AUTH_SECRET)
-  .update('betintel-ws-auth')
-  .digest('base64');
-// Pass as: wss://host/ws?token=<token>
-```
-
-## Activate in frontend
-
-In `index.html`, find the `initWebSocket()` function and:
-1. Uncomment the block
-2. Set `BETINTEL_WS_URL` to your deployed WS server URL
-3. Set the token query param
-
-## Health Check
-
-```
-GET https://your-ws-host/health
-```
-Returns: connected clients, rooms, messages sent, uptime.
-
-## Scaling
-
-- Single instance handles ~500 concurrent connections comfortably on 256MB RAM
-- For >1k connections: add a second instance + use Redis to coordinate broadcasts
-  (ws/server.js already uses Redis Pub/Sub, so multi-instance works out of the box)
+Railway free tier sleeps services after inactivity.
+Upgrade to **Hobby plan ($5/mo)** to keep ws-server always-on.
+A sleeping WS server is useless — always-on is non-negotiable for real-time odds.

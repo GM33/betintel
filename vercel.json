@@ -1,5 +1,12 @@
 {
+  "rewrites": [
+    { "source": "/", "destination": "/api/index" }
+  ],
   "functions": {
+    "api/index.js": {
+      "memory": 128,
+      "maxDuration": 5
+    },
     "api/webhook.js": {
       "memory": 256,
       "maxDuration": 10
@@ -10,7 +17,7 @@
       "source": "/api/(.*)",
       "headers": [
         { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "X-Frame-Options", "value": "DENY" }
+        { "key": "X-Frame-Options",        "value": "DENY" }
       ]
     }
   ]

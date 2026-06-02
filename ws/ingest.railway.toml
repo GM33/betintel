@@ -1,0 +1,18 @@
+# ingest.railway.toml — BetIntel Ingest Worker
+# Use this file when creating the SECOND Railway service (ws-ingest).
+# In Railway dashboard: Service Settings -> Root Directory = ws
+# Override start command to: node ingest.js
+# This file is documentation — Railway uses railway.toml for the primary service.
+
+[build]
+  builder     = "nixpacks"
+  buildCommand = "npm install --omit=dev"
+
+[deploy]
+  startCommand       = "node ingest.js"
+  restartPolicyType  = "always"
+  restartPolicyMaxRetries = 10
+
+[deploy.environmentVariables]
+  NODE_ENV      = "production"
+  INGEST_CRON   = "*/2 * * * *"
