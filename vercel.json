@@ -1,4 +1,7 @@
 {
+  "env": {
+    "TENNIS_SPORT_KEY": "tennis_atp_french_open"
+  },
   "rewrites": [
     { "source": "/", "destination": "/api/index" }
   ],
@@ -8,6 +11,22 @@
       "maxDuration": 5
     },
     "api/webhook.js": {
+      "memory": 256,
+      "maxDuration": 10
+    },
+    "api/tennis-picks.js": {
+      "memory": 256,
+      "maxDuration": 15
+    },
+    "api/picks-log.js": {
+      "memory": 128,
+      "maxDuration": 10
+    },
+    "api/calibration.js": {
+      "memory": 256,
+      "maxDuration": 15
+    },
+    "api/odds.js": {
       "memory": 256,
       "maxDuration": 10
     }
