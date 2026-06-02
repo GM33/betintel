@@ -1,0 +1,15 @@
+# Railway deployment config for BetIntel WS server
+# Deploy as TWO services from this directory:
+#   Service 1: ws-server  (CMD: node server.js)
+#   Service 2: ws-ingest  (CMD: node ingest.js)
+
+[build]
+  builder = "nixpacks"
+  buildCommand = "npm install"
+
+[[deploy]]
+  startCommand = "node server.js"
+  healthcheckPath = "/health"
+  healthcheckTimeout = 10
+  restartPolicyType = "on_failure"
+  restartPolicyMaxRetries = 5

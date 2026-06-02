@@ -1,0 +1,19 @@
+{
+  "name": "betintel-ws",
+  "version": "1.0.0",
+  "description": "BetIntel WebSocket server and ingest worker",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "ingest": "node ingest.js",
+    "dev": "node --watch server.js",
+    "dev:ingest": "node --watch ingest.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "ioredis": "^5.3.2",
+    "ws": "^8.17.0"
+  }
+}
