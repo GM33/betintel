@@ -1,13 +1,14 @@
 // api/index.js
 // Serves index.html with WS config injected server-side.
-// No secrets are exposed in the repo — token is generated at runtime
-// from WS_AUTH_SECRET stored in Vercel environment variables.
+//
+// Fixes applied (audit):
+//  #4 — Token uses hourly HMAC rotation: betintel-ws-auth:<hourBucket>
+//       Server accepts current hour and previous hour window.
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 
 export default function handler(req, res) {
-  // Only serve GET /
   if (req.method !== 'GET') {
     res.status(405).end('Method Not Allowed');
     return;
@@ -16,10 +17,10 @@ export default function handler(req, res) {
   const secret = process.env.WS_AUTH_SECRET || '';
   const wsUrl  = process.env.BETINTEL_WS_URL  || '';
 
-  // Generate per-request HMAC token so it's always fresh
-  // Server validates: HMAC-SHA256(secret, 'betintel-ws-auth')
-  const token = secret
-    ? crypto.createHmac('sha256', secret).update('betintel-ws-auth').digest('base64')
+  // FIX #4: token encodes current hour so it auto-rotates every 60 min
+  const bucket = Math.floor(Date.now() / 3_600_000);
+  const token  = secret
+    ? crypto.createHmac('sha256', secret).update(`betintel-ws-auth:${bucket}`).digest('base64')
     : '';
 
   let html;
@@ -30,8 +31,6 @@ export default function handler(req, res) {
     return;
   }
 
-  // Inject window globals immediately before the first <script> tag
-  // so they are available when BetIntelOddsClient initialises
   const configScript = `<script>
   window.BETINTEL_WS_URL   = ${JSON.stringify(wsUrl)};
   window.BETINTEL_WS_TOKEN = ${JSON.stringify(token)};
