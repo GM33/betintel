@@ -1,9 +1,8 @@
 [build]
   builder = "DOCKERFILE"
-  dockerfilePath = "mlb/Dockerfile"
+  dockerfilePath = "Dockerfile"
 
 [deploy]
-  startCommand = "python mlb/startup.py && uvicorn mlb.api.main:app --host 0.0.0.0 --port $PORT"
   healthcheckPath = "/health"
   healthcheckTimeout = 300
   restartPolicyType = "on_failure"
