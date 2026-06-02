@@ -4,11 +4,14 @@
 // Fixes applied (audit):
 //  #3  — No new Redis connection per request: reuse module-level persistent client
 //  #15 — Quota read from Redis (shared across serverless instances) not in-process state
+// Added:
+//  lastRailwayEvent — read from Redis key written by api/railway-events.js
 
 const { fetchOdds } = require('./_lib/odds');
 
-const STALE_WINDOW_MS = Number(process.env.ODDS_STALE_WINDOW_SECONDS || 120) * 1000;
-const PROBE_SPORT     = process.env.ODDS_HEALTH_PROBE_SPORT || 'baseball_mlb';
+const STALE_WINDOW_MS  = Number(process.env.ODDS_STALE_WINDOW_SECONDS || 120) * 1000;
+const PROBE_SPORT      = process.env.ODDS_HEALTH_PROBE_SPORT || 'baseball_mlb';
+const RAILWAY_KEY      = 'betintel:railway:lastEvent';
 
 // FIX #3: module-level persistent Redis client — created once, reused across invocations
 let _redis = null;
@@ -47,7 +50,6 @@ async function pingRedis() {
 }
 
 // ---- Cache age + quota probe (FIX #3 + #15) ----
-// Reads quota from the ingest snapshot in Redis (shared source of truth)
 async function getCacheInfo(sport) {
   try {
     const redis = await getRedis();
@@ -56,11 +58,23 @@ async function getCacheInfo(sport) {
     if (!raw) return { ageMs: null, quota: null };
     const parsed  = JSON.parse(raw);
     const ageMs   = parsed.cachedAt ? Date.now() - new Date(parsed.cachedAt).getTime() : null;
-    // FIX #15: quota comes from the ingest snapshot — valid across all serverless instances
     const quota   = parsed.quota || null;
     return { ageMs, quota };
   } catch {
     return { ageMs: null, quota: null };
+  }
+}
+
+// ---- Last Railway infra event ----
+async function getLastRailwayEvent() {
+  try {
+    const redis = await getRedis();
+    if (!redis) return null;
+    const raw = await redis.get(RAILWAY_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
   }
 }
 
@@ -89,10 +103,11 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const [redisResult, providerResult, cacheInfo] = await Promise.all([
+  const [redisResult, providerResult, cacheInfo, lastRailwayEvent] = await Promise.all([
     pingRedis(),
     probeProvider(),
     getCacheInfo(PROBE_SPORT),
+    getLastRailwayEvent(),
   ]);
 
   const { ageMs: cacheAgeMs, quota } = cacheInfo;
@@ -119,10 +134,19 @@ module.exports = async function handler(req, res) {
       ageSecs: cacheAgeMs !== null ? Math.round(cacheAgeMs / 1000) : null,
       stale:   cacheAgeMs !== null ? cacheAgeMs > STALE_WINDOW_MS : null,
     },
-    // FIX #15: real quota from Redis ingest snapshot
     quota: quota ? {
       remaining:  quota.remaining,
       updatedAt:  quota.updatedAt,
+    } : null,
+    // Last Railway infra event — correlate service crashes/deploys with odds behavior
+    lastRailwayEvent: lastRailwayEvent ? {
+      type:        lastRailwayEvent.type,
+      serviceId:   lastRailwayEvent.serviceId,
+      serviceName: lastRailwayEvent.serviceName,
+      status:      lastRailwayEvent.status,
+      environment: lastRailwayEvent.environment,
+      ts:          lastRailwayEvent.ts,
+      receivedAt:  lastRailwayEvent.receivedAt,
     } : null,
   });
 };
