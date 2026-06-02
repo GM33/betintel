@@ -1,0 +1,23 @@
+[build]
+  builder = "dockerfile"
+  dockerfilePath = "mlb/Dockerfile"
+
+[deploy]
+  startCommand = "uvicorn mlb.api.main:app --host 0.0.0.0 --port $PORT"
+  healthcheckPath = "/health"
+  healthcheckTimeout = 30
+  restartPolicyType = "on_failure"
+  restartPolicyMaxRetries = 5
+
+[[services]]
+  name = "betintel-mlb-api"
+  [services.variables]
+    PYTHONPATH = "/app"
+    PYTHONUNBUFFERED = "1"
+
+[[services]]
+  name = "betintel-mlb-scheduler"
+  startCommand = "python -m mlb.scheduler.runner"
+  [services.variables]
+    PYTHONPATH = "/app"
+    PYTHONUNBUFFERED = "1"
