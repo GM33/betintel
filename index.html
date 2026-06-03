@@ -429,7 +429,7 @@
 
 <script>
 const CONFIG = {
-  RAILWAY_URL:        'https://betintel-production-2a83.up.railway.app',
+  RAILWAY_URL:        'https://betintel-production-a550.up.railway.app',
   HEALTH_PATH:        '/health',
   ODDS_PATH:          '/api/odds',
   PICKS_PATH:         '/api/nba-picks',
@@ -537,7 +537,12 @@ async function pollHealth() {
   try {
     const res = await fetch(CONFIG.RAILWAY_URL + CONFIG.HEALTH_PATH, { signal: AbortSignal.timeout(8000) });
     if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
     hideOffline();
+    // If pipeline is still warming up, show a loading state instead of offline
+    if (data.pipeline_ready === false) {
+      document.getElementById('hero-sub').textContent = 'Data pipeline warming up — picks will appear shortly...';
+    }
   } catch(e) {
     showOffline('Live feed unavailable — retrying every 30s.');
   }
