@@ -2,6 +2,7 @@
 // BetIntel live odds endpoint — Redis-backed cache, stale fallback, dataSource flag
 
 const { fetchOdds, isAllowedSport, sanitizeMarkets, normalizeEvents, getRateLimitState, ERROR_CODES } = require('./_lib/odds');
+const { maybeLogNbaSnapshot } = require('./_lib/nba-snapshot-hook');
 
 // ---- Lightweight in-process cache (fallback when Redis is unavailable) ----
 const inMemCache = new Map();
@@ -116,6 +117,10 @@ module.exports = async function handler(req, res) {
         stale: false,
       };
       await cacheSet(cacheKey, payload);
+
+      // ── NBA snapshot logging (fire-and-forget, never blocks response) ──
+      maybeLogNbaSnapshot(sport, normalized).catch(() => {});
+
       res.setHeader('Cache-Control', `s-maxage=${CACHE_TTL_SECONDS}, stale-while-revalidate=${STALE_WINDOW_SECONDS}`);
       res.setHeader('X-BetIntel-Source', 'live');
       return res.status(200).json(payload);
