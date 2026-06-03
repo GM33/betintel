@@ -1,0 +1,16 @@
+# railway.toml
+# BetIntel — Railway deployment config
+# Adds a nightly cron job to grade NBA predictions at 03:00 AM ET (08:00 UTC)
+
+[deploy]
+startCommand = "node api/index.js"
+healthcheckPath = "/api/health"
+healthcheckTimeout = 10
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+
+[[services]]
+name = "nba-nightly-resolver"
+type = "cron"
+schedule = "0 8 * * *"     # 08:00 UTC = 03:00 AM ET
+command  = "node -e \"require('./api/nba-cron.js').main()\""

@@ -30,6 +30,22 @@
     "api/odds.js": {
       "memory": 256,
       "maxDuration": 10
+    },
+    "api/nba-picks.js": {
+      "memory": 256,
+      "maxDuration": 15
+    },
+    "api/nba-resolve.js": {
+      "memory": 256,
+      "maxDuration": 30
+    },
+    "api/nba-validation.js": {
+      "memory": 256,
+      "maxDuration": 15
+    },
+    "api/nba-cron.js": {
+      "memory": 128,
+      "maxDuration": 30
     }
   },
   "headers": [
