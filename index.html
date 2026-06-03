@@ -53,7 +53,7 @@
     @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;}}
     .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);}
 
-    /* ─── SIDEBAR ─── */
+    /* SIDEBAR */
     #sidebar{width:var(--sidebar-w);flex-shrink:0;height:100dvh;display:flex;flex-direction:column;background:var(--color-surface);border-right:1px solid var(--color-divider);overflow-y:auto;position:sticky;top:0;z-index:20;}
     #main-content{flex:1;height:100dvh;overflow-y:auto;display:flex;flex-direction:column;}
     .sidebar-logo{display:flex;align-items:center;gap:var(--space-2);padding:var(--space-5) var(--space-4);border-bottom:1px solid var(--color-divider);}
@@ -77,9 +77,10 @@
     .user-name{font-size:var(--text-sm);font-weight:600;color:var(--color-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
     .user-plan{font-size:var(--text-xs);color:var(--color-text-muted);}
 
-    /* ─── TOPBAR ─── */
+    /* TOPBAR */
     #topbar{display:flex;align-items:center;gap:var(--space-3);padding:var(--space-3) var(--space-6);border-bottom:1px solid var(--color-divider);background:var(--color-surface);position:sticky;top:0;z-index:10;}
     .topbar-title{font-size:var(--text-base);font-weight:600;flex:1;}
+    .topbar-date{font-size:var(--text-xs);color:var(--color-text-muted);font-weight:500;padding:var(--space-1) var(--space-3);background:var(--color-surface-offset);border-radius:var(--radius-full);white-space:nowrap;}
     .topbar-actions{display:flex;align-items:center;gap:var(--space-2);}
     .icon-btn{display:grid;place-items:center;width:32px;height:32px;border-radius:var(--radius-md);color:var(--color-text-muted);transition:background var(--transition),color var(--transition);}
     .icon-btn:hover{background:var(--color-surface-offset);color:var(--color-text);}
@@ -96,7 +97,7 @@
     .tooltip-row{display:flex;align-items:center;justify-content:space-between;gap:var(--space-4);padding:3px 0;font-size:var(--text-xs);color:var(--color-text-muted);}
     .tooltip-row strong{color:var(--color-text);font-weight:600;}
 
-    /* ─── TICKER ─── */
+    /* TICKER */
     .ticker-wrap{overflow:hidden;background:var(--color-primary);padding:6px 0;border-bottom:1px solid var(--color-primary-active);}
     .ticker-track{display:flex;gap:var(--space-8);white-space:nowrap;animation:ticker 38s linear infinite;width:max-content;}
     .ticker-track:hover{animation-play-state:paused;}
@@ -107,7 +108,7 @@
     .ticker-item .t-ev{padding:1px 5px;border-radius:var(--radius-full);font-size:9px;font-weight:800;background:rgba(255,255,255,.18);}
     .ticker-sep{color:rgba(255,255,255,.3);}
 
-    /* ─── HERO ─── */
+    /* HERO */
     .hero-banner{
       margin:var(--space-6) var(--space-6) 0;
       border-radius:var(--radius-xl);overflow:hidden;
@@ -130,19 +131,21 @@
     .hero-stat-lbl{font-size:var(--text-xs);color:rgba(255,255,255,.55);font-weight:600;text-transform:uppercase;letter-spacing:.06em;}
     .hero-sport-icons{position:absolute;bottom:var(--space-4);right:var(--space-8);display:flex;gap:var(--space-3);opacity:.35;font-size:2rem;pointer-events:none;}
 
-    /* ─── SPORT ICON STRIP ─── */
+    /* SPORT STRIP */
     .sport-strip{display:flex;gap:var(--space-3);padding:var(--space-4) var(--space-6) 0;flex-wrap:wrap;}
-    .sport-tile{display:flex;flex-direction:column;align-items:center;gap:var(--space-1);padding:var(--space-2) var(--space-4);border-radius:var(--radius-lg);border:1px solid var(--color-border);background:var(--color-surface);cursor:pointer;transition:all var(--transition);min-width:70px;}
+    .sport-tile{display:flex;flex-direction:column;align-items:center;gap:var(--space-1);padding:var(--space-2) var(--space-4);border-radius:var(--radius-lg);border:1px solid var(--color-border);background:var(--color-surface);cursor:pointer;transition:all var(--transition);min-width:70px;position:relative;}
     .sport-tile:hover{border-color:var(--color-primary);background:var(--color-primary-hl);transform:translateY(-1px);box-shadow:var(--shadow-sm);}
     .sport-tile.active{border-color:var(--color-primary);background:var(--color-primary-hl);color:var(--color-primary);}
     .sport-tile-icon{font-size:1.5rem;line-height:1;}
     .sport-tile-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--color-text-muted);}
     .sport-tile.active .sport-tile-label{color:var(--color-primary);}
+    .sport-tile-count{position:absolute;top:-5px;right:-5px;background:var(--color-primary);color:var(--color-text-inverse);font-size:9px;font-weight:800;border-radius:var(--radius-full);padding:1px 5px;min-width:16px;text-align:center;display:none;}
+    .sport-tile-count.show{display:block;}
 
-    /* ─── PAGE BODY ─── */
+    /* PAGE BODY */
     #page-body{padding:var(--space-4) var(--space-6) var(--space-6);display:flex;flex-direction:column;gap:var(--space-5);flex:1;}
 
-    /* ─── KPI STRIP ─── */
+    /* KPI STRIP */
     .kpi-strip{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(160px,100%),1fr));gap:var(--space-3);}
     .kpi-card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-1);box-shadow:var(--shadow-sm);transition:box-shadow var(--transition);position:relative;overflow:hidden;}
     .kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--color-primary);opacity:.5;}
@@ -153,7 +156,7 @@
     .kpi-delta.up{color:var(--color-success);}
     .kpi-delta.down{color:var(--color-error);}
 
-    /* ─── SECTION HEADERS / FILTERS ─── */
+    /* SECTION HEADERS */
     .section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-3);flex-wrap:wrap;gap:var(--space-3);}
     .section-title{font-size:var(--text-base);font-weight:700;color:var(--color-text);}
     .section-meta{font-size:var(--text-xs);color:var(--color-text-muted);}
@@ -161,7 +164,34 @@
     .filter-chip{padding:var(--space-1) var(--space-3);border-radius:var(--radius-full);font-size:var(--text-xs);font-weight:500;border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-muted);cursor:pointer;transition:all var(--transition);}
     .filter-chip:hover,.filter-chip.active{border-color:var(--color-primary);color:var(--color-primary);background:var(--color-primary-hl);font-weight:600;}
 
-    /* ─── ODDS TABLE ─── */
+    /* TOP PICKS */
+    .picks-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(300px,100%),1fr));gap:var(--space-4);}
+    .pick-card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-xl);padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-3);box-shadow:var(--shadow-sm);transition:box-shadow var(--transition),transform var(--transition);cursor:pointer;position:relative;overflow:hidden;}
+    .pick-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;}
+    .pick-card.tier-high::before{background:var(--color-success);}
+    .pick-card.tier-med::before{background:var(--color-primary);}
+    .pick-card.tier-low::before{background:var(--color-warning);}
+    .pick-card:hover{box-shadow:var(--shadow-md);transform:translateY(-2px);}
+    .pick-header{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-2);}
+    .pick-tier{font-size:10px;font-weight:800;padding:2px 8px;border-radius:var(--radius-full);text-transform:uppercase;letter-spacing:.06em;}
+    .pick-tier.high{background:var(--color-success-hl);color:var(--color-success);}
+    .pick-tier.med{background:var(--color-primary-hl);color:var(--color-primary);}
+    .pick-tier.low{background:var(--color-warning-hl);color:var(--color-warning);}
+    .pick-sport-chip{font-size:10px;font-weight:700;padding:2px 8px;border-radius:var(--radius-full);background:var(--color-surface-offset);color:var(--color-text-muted);text-transform:uppercase;}
+    .pick-matchup{font-size:var(--text-sm);font-weight:700;color:var(--color-text);}
+    .pick-bet{font-size:var(--text-base);font-weight:800;color:var(--color-primary);margin:var(--space-1) 0;}
+    .pick-line{font-family:var(--font-mono);font-size:var(--text-xs);color:var(--color-text-muted);}
+    .pick-reasoning{font-size:var(--text-xs);color:var(--color-text-muted);line-height:1.6;border-top:1px solid var(--color-divider);padding-top:var(--space-2);}
+    .pick-ev{display:flex;align-items:center;gap:var(--space-2);}
+    .ev-chip{display:inline-flex;align-items:center;padding:2px 7px;border-radius:var(--radius-full);font-size:10px;font-weight:700;}
+    .ev-chip.pos{background:var(--color-success-hl);color:var(--color-success);}
+    .ev-chip.neg{background:var(--color-error-hl);color:var(--color-error);}
+    .pick-signal-bar{display:flex;gap:4px;align-items:center;}
+    .signal-dot{width:8px;height:8px;border-radius:var(--radius-full);background:var(--color-border);}
+    .signal-dot.lit{background:var(--color-primary);}
+    .signal-label{font-size:10px;color:var(--color-text-faint);}
+
+    /* ODDS TABLE */
     .odds-table-wrap{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-xl);overflow:hidden;box-shadow:var(--shadow-sm);}
     .odds-table{width:100%;border-collapse:collapse;font-size:var(--text-xs);font-variant-numeric:tabular-nums lining-nums;}
     .odds-table thead th{background:var(--color-surface-offset);padding:var(--space-3) var(--space-4);text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--color-text-faint);border-bottom:1px solid var(--color-divider);white-space:nowrap;}
@@ -176,17 +206,15 @@
     .odds-value{font-weight:600;font-size:var(--text-sm);color:var(--color-text);}
     .odds-value.positive{color:var(--color-success);}
     .odds-value.negative{color:var(--color-error);}
-    .ev-chip{display:inline-flex;align-items:center;padding:2px 7px;border-radius:var(--radius-full);font-size:10px;font-weight:700;}
-    .ev-chip.pos{background:var(--color-success-hl);color:var(--color-success);}
-    .ev-chip.neg{background:var(--color-error-hl);color:var(--color-error);}
     .book-logo{display:inline-block;padding:2px 6px;border-radius:var(--radius-sm);font-size:10px;font-weight:700;background:var(--color-surface-offset);color:var(--color-text-muted);letter-spacing:.04em;}
     .live-indicator{display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--color-primary);font-weight:600;}
     .live-dot{width:6px;height:6px;border-radius:var(--radius-full);background:var(--color-primary);animation:pulse-live 1.8s ease-in-out infinite;}
     .time-chip{color:var(--color-text-faint);font-size:10px;}
+    .today-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700;padding:1px 6px;border-radius:var(--radius-full);background:var(--color-primary-hl);color:var(--color-primary);}
     .animate-in{animation:fadeSlideIn .35s ease-out both;}
     @keyframes fadeSlideIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
 
-    /* ─── ARB ─── */
+    /* ARB */
     .arb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(280px,100%),1fr));gap:var(--space-4);}
     .arb-card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-xl);padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-3);box-shadow:var(--shadow-sm);transition:box-shadow var(--transition),transform var(--transition);cursor:pointer;}
     .arb-card:hover{box-shadow:var(--shadow-md);transform:translateY(-2px);}
@@ -199,7 +227,7 @@
     .arb-leg-label{font-size:var(--text-xs);color:var(--color-text-muted);}
     .arb-leg-odds{font-size:var(--text-xs);font-weight:700;color:var(--color-text);}
 
-    /* ─── EMPTY STATE ─── */
+    /* EMPTY */
     .empty-state{display:flex;flex-direction:column;align-items:center;text-align:center;padding:var(--space-16) var(--space-8);color:var(--color-text-muted);}
     .empty-state-icon{font-size:3rem;margin-bottom:var(--space-4);opacity:.5;}
     .empty-state h3{font-size:var(--text-base);font-weight:600;color:var(--color-text);margin-bottom:var(--space-1);}
@@ -219,6 +247,7 @@
       .hero-banner{margin:var(--space-3);padding:var(--space-5);min-height:auto;}
       .hero-stats{display:none;}
       .sport-strip{padding:var(--space-3) var(--space-3) 0;}
+      .topbar-date{display:none;}
     }
   </style>
 </head>
@@ -255,7 +284,7 @@
       <i data-lucide="layers"></i> Parlay Builder
     </button>
     <button class="nav-item" data-view="tracker">
-      <i data-lucide="bar-chart-2"></i> Tracker
+      <i data-lucide="bar-chart-2"></i> Model Tracker
     </button>
     <div class="nav-section-label">Account</div>
     <button class="nav-item" data-view="settings">
@@ -276,7 +305,8 @@
 
 <div id="main-content">
   <header id="topbar">
-    <span class="topbar-title" id="topbar-title">Live Odds Dashboard</span>
+    <span class="topbar-title" id="topbar-title">Today's Games</span>
+    <span class="topbar-date" id="topbar-date">—</span>
     <div class="topbar-actions">
       <div class="health-badge simulated" id="health-badge" role="status" aria-live="polite">
         <span class="health-dot"></span>
@@ -291,7 +321,7 @@
           <div class="tooltip-row"><span>Last Check</span><strong id="tt-ts">—</strong></div>
         </div>
       </div>
-      <button class="icon-btn" data-theme-toggle aria-label="Switch to light mode">
+      <button class="icon-btn" data-theme-toggle aria-label="Switch theme">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
       </button>
       <button class="icon-btn" id="btn-refresh" aria-label="Refresh odds">
@@ -300,27 +330,27 @@
     </div>
   </header>
 
-  <!-- LIVE TICKER -->
+  <!-- TICKER -->
   <div class="ticker-wrap" id="ticker-wrap">
     <div class="ticker-track" id="ticker-track"></div>
   </div>
 
-  <!-- HERO BANNER -->
+  <!-- HERO -->
   <div class="hero-banner">
     <div class="hero-bg-glow"></div>
     <div class="hero-text">
-      <div class="hero-eyebrow">⚡ Live Intelligence</div>
+      <div class="hero-eyebrow" id="hero-eyebrow">⚡ Today's Slate</div>
       <div class="hero-headline">Beat the line.<br>Back the edge.</div>
-      <div class="hero-sub">Real-time odds from 20+ books across MLB, NBA, NFL, NHL, WNBA and EPL.</div>
+      <div class="hero-sub" id="hero-sub">Loading today's games across all active markets…</div>
     </div>
     <div class="hero-stats">
       <div class="hero-stat">
         <div class="hero-stat-val" id="hero-games">—</div>
-        <div class="hero-stat-lbl">Live Games</div>
+        <div class="hero-stat-lbl">Today's Games</div>
       </div>
       <div class="hero-stat">
-        <div class="hero-stat-val" id="hero-arb">—</div>
-        <div class="hero-stat-lbl">Arb Opps</div>
+        <div class="hero-stat-val" id="hero-picks">—</div>
+        <div class="hero-stat-lbl">Top Picks</div>
       </div>
     </div>
     <div class="hero-sport-icons">⚾️🏀🏈🏒🏅⚽️</div>
@@ -328,27 +358,49 @@
 
   <!-- SPORT TILE STRIP -->
   <div class="sport-strip" id="sport-strip">
-    <div class="sport-tile active" data-sport="all"><span class="sport-tile-icon">📊</span><span class="sport-tile-label">All</span></div>
-    <div class="sport-tile" data-sport="baseball_mlb"><span class="sport-tile-icon">⚾️</span><span class="sport-tile-label">MLB</span></div>
-    <div class="sport-tile" data-sport="basketball_nba"><span class="sport-tile-icon">🏀</span><span class="sport-tile-label">NBA</span></div>
-    <div class="sport-tile" data-sport="basketball_wnba"><span class="sport-tile-icon">🏅</span><span class="sport-tile-label">WNBA</span></div>
-    <div class="sport-tile" data-sport="americanfootball_nfl"><span class="sport-tile-icon">🏈</span><span class="sport-tile-label">NFL</span></div>
-    <div class="sport-tile" data-sport="icehockey_nhl"><span class="sport-tile-icon">🏒</span><span class="sport-tile-label">NHL</span></div>
-    <div class="sport-tile" data-sport="soccer_epl"><span class="sport-tile-icon">⚽️</span><span class="sport-tile-label">EPL</span></div>
+    <div class="sport-tile active" data-sport="all"><span class="sport-tile-icon">📊</span><span class="sport-tile-label">All</span><span class="sport-tile-count" id="cnt-all"></span></div>
+    <div class="sport-tile" data-sport="baseball_mlb"><span class="sport-tile-icon">⚾️</span><span class="sport-tile-label">MLB</span><span class="sport-tile-count" id="cnt-baseball_mlb"></span></div>
+    <div class="sport-tile" data-sport="basketball_nba"><span class="sport-tile-icon">🏀</span><span class="sport-tile-label">NBA</span><span class="sport-tile-count" id="cnt-basketball_nba"></span></div>
+    <div class="sport-tile" data-sport="basketball_wnba"><span class="sport-tile-icon">🏅</span><span class="sport-tile-label">WNBA</span><span class="sport-tile-count" id="cnt-basketball_wnba"></span></div>
+    <div class="sport-tile" data-sport="americanfootball_nfl"><span class="sport-tile-icon">🏈</span><span class="sport-tile-label">NFL</span><span class="sport-tile-count" id="cnt-americanfootball_nfl"></span></div>
+    <div class="sport-tile" data-sport="icehockey_nhl"><span class="sport-tile-icon">🏒</span><span class="sport-tile-label">NHL</span><span class="sport-tile-count" id="cnt-icehockey_nhl"></span></div>
+    <div class="sport-tile" data-sport="soccer_epl"><span class="sport-tile-icon">⚽️</span><span class="sport-tile-label">EPL</span><span class="sport-tile-count" id="cnt-soccer_epl"></span></div>
   </div>
 
   <main id="page-body">
+    <!-- KPIs -->
     <div class="kpi-strip" id="kpi-strip">
-      <div class="kpi-card"><div class="kpi-label">Live Games</div><div class="kpi-value" id="kpi-games">—</div><div class="kpi-delta up" id="kpi-games-d">Loading…</div></div>
-      <div class="kpi-card"><div class="kpi-label">Avg +EV Props</div><div class="kpi-value" id="kpi-ev">—</div><div class="kpi-delta up">Across all books</div></div>
+      <div class="kpi-card"><div class="kpi-label">Today's Games</div><div class="kpi-value" id="kpi-games">—</div><div class="kpi-delta up" id="kpi-games-d">Loading…</div></div>
+      <div class="kpi-card"><div class="kpi-label">Top Picks Today</div><div class="kpi-value" id="kpi-picks">—</div><div class="kpi-delta up">High-confidence only</div></div>
       <div class="kpi-card"><div class="kpi-label">Arb Opportunities</div><div class="kpi-value" id="kpi-arb">—</div><div class="kpi-delta up">Guaranteed profit</div></div>
       <div class="kpi-card"><div class="kpi-label">Data Freshness</div><div class="kpi-value" id="kpi-fresh">—</div><div class="kpi-delta" id="kpi-fresh-delta" style="color:var(--color-text-muted)">Updating…</div></div>
     </div>
 
+    <!-- DASHBOARD VIEW -->
     <section id="view-dashboard">
+
+      <!-- TOP PICKS OF THE DAY -->
       <div class="section-header">
         <div>
-          <div class="section-title">Live Odds</div>
+          <div class="section-title">🔥 Top Picks of the Day</div>
+          <div class="section-meta" id="picks-meta">Generating picks from today's slate…</div>
+        </div>
+        <div class="filter-bar" id="picks-sport-filter">
+          <button class="filter-chip active" data-sport="all">All</button>
+          <button class="filter-chip" data-sport="baseball_mlb">⚾ MLB</button>
+          <button class="filter-chip" data-sport="basketball_nba">🏀 NBA</button>
+          <button class="filter-chip" data-sport="basketball_wnba">🏅 WNBA</button>
+          <button class="filter-chip" data-sport="americanfootball_nfl">🏈 NFL</button>
+          <button class="filter-chip" data-sport="icehockey_nhl">🏒 NHL</button>
+          <button class="filter-chip" data-sport="soccer_epl">⚽ EPL</button>
+        </div>
+      </div>
+      <div class="picks-grid" id="picks-grid"></div>
+
+      <!-- LIVE ODDS TABLE -->
+      <div class="section-header" style="margin-top:var(--space-2)">
+        <div>
+          <div class="section-title">Today's Lines</div>
           <div class="section-meta" id="odds-meta">Fetching from The Odds API…</div>
         </div>
         <div class="filter-bar" id="sport-filter">
@@ -362,80 +414,237 @@
         </div>
       </div>
       <div class="odds-table-wrap">
-        <table class="odds-table" aria-label="Live odds">
+        <table class="odds-table" aria-label="Today's odds">
           <thead><tr>
             <th></th><th>Matchup</th><th>Home ML</th><th>Away ML</th>
             <th>Spread</th><th>Total</th><th>Best Book</th>
-            <th>EV</th><th>Status</th>
+            <th>EV</th><th>Time</th>
           </tr></thead>
           <tbody id="odds-tbody">
             <tr><td colspan="9"><div class="empty-state">
               <div class="empty-state-icon">⚡</div>
-              <h3>Connecting to live odds…</h3>
-              <p>Establishing connection to Railway backend and The Odds API provider.</p>
+              <h3>Loading today's games…</h3>
+              <p>Connecting to live odds provider.</p>
             </div></td></tr>
           </tbody>
         </table>
       </div>
     </section>
 
+    <!-- SHARP PICKS VIEW -->
+    <section id="view-picks" style="display:none">
+      <div class="section-header">
+        <div><div class="section-title">Sharp Picks</div><div class="section-meta" id="sharp-meta">All high-confidence picks for today</div></div>
+        <div class="filter-bar" id="sharp-sport-filter">
+          <button class="filter-chip active" data-sport="all">All</button>
+          <button class="filter-chip" data-sport="baseball_mlb">⚾ MLB</button>
+          <button class="filter-chip" data-sport="basketball_nba">🏀 NBA</button>
+          <button class="filter-chip" data-sport="basketball_wnba">🏅 WNBA</button>
+          <button class="filter-chip" data-sport="americanfootball_nfl">🏈 NFL</button>
+          <button class="filter-chip" data-sport="icehockey_nhl">🏒 NHL</button>
+          <button class="filter-chip" data-sport="soccer_epl">⚽ EPL</button>
+        </div>
+      </div>
+      <div class="picks-grid" id="sharp-picks-grid"></div>
+    </section>
+
+    <!-- ARB VIEW -->
     <section id="view-arb" style="display:none">
       <div class="section-header">
-        <div><div class="section-title">Arb Finder</div><div class="section-meta" id="arb-meta">Scanning…</div></div>
+        <div><div class="section-title">Arb Finder</div><div class="section-meta" id="arb-meta">Scanning today's games…</div></div>
+        <div class="filter-bar" id="arb-sport-filter">
+          <button class="filter-chip active" data-sport="all">All</button>
+          <button class="filter-chip" data-sport="baseball_mlb">⚾ MLB</button>
+          <button class="filter-chip" data-sport="basketball_nba">🏀 NBA</button>
+          <button class="filter-chip" data-sport="basketball_wnba">🏅 WNBA</button>
+          <button class="filter-chip" data-sport="americanfootball_nfl">🏈 NFL</button>
+          <button class="filter-chip" data-sport="icehockey_nhl">🏒 NHL</button>
+          <button class="filter-chip" data-sport="soccer_epl">⚽ EPL</button>
+        </div>
       </div>
       <div class="arb-grid" id="arb-grid"></div>
     </section>
+
+    <!-- LINE SHOP VIEW -->
+    <section id="view-lineshop" style="display:none">
+      <div class="empty-state"><div class="empty-state-icon">📈</div><h3>Line Shopping</h3><p>Cross-book line comparison coming soon.</p></div>
+    </section>
+
+    <!-- PARLAY VIEW -->
+    <section id="view-parlay" style="display:none">
+      <div class="empty-state"><div class="empty-state-icon">🎯</div><h3>Parlay Builder</h3><p>Build and optimize parlays from today's picks.</p></div>
+    </section>
+
+    <!-- TRACKER VIEW -->
+    <section id="view-tracker" style="display:none">
+      <div class="empty-state"><div class="empty-state-icon">📊</div><h3>Model Tracker</h3><p>NBA model validation dashboard — run /api/nba-resolve to populate.</p></div>
+    </section>
+
+    <!-- SETTINGS VIEW -->
+    <section id="view-settings" style="display:none">
+      <div class="empty-state"><div class="empty-state-icon">⚙️</div><h3>Settings</h3><p>Preferences, notifications, and account management.</p></div>
+    </section>
+
   </main>
 </div>
 
 <script>
-const SPORT_META = {
-  baseball_mlb:          { icon: '⚾️', label: 'MLB' },
-  basketball_nba:        { icon: '🏀', label: 'NBA' },
-  basketball_wnba:       { icon: '🏅', label: 'WNBA' },
-  americanfootball_nfl:  { icon: '🏈', label: 'NFL' },
-  icehockey_nhl:         { icon: '🏒', label: 'NHL' },
-  soccer_epl:            { icon: '⚽️', label: 'EPL' },
-};
-
-const SIM_MATCHUPS = [
-  {home:'New York Yankees',    away:'Boston Red Sox',       sport:'MLB', sportKey:'baseball_mlb'},
-  {home:'Los Angeles Dodgers', away:'Chicago Cubs',         sport:'MLB', sportKey:'baseball_mlb'},
-  {home:'Golden State Warriors',away:'Miami Heat',          sport:'NBA', sportKey:'basketball_nba'},
-  {home:'Dallas Mavericks',    away:'Phoenix Suns',         sport:'NBA', sportKey:'basketball_nba'},
-  {home:'Las Vegas Aces',      away:'New York Liberty',     sport:'WNBA',sportKey:'basketball_wnba'},
-  {home:'Seattle Storm',       away:'Chicago Sky',          sport:'WNBA',sportKey:'basketball_wnba'},
-  {home:'Kansas City Chiefs',  away:'Buffalo Bills',        sport:'NFL', sportKey:'americanfootball_nfl'},
-  {home:'Colorado Avalanche',  away:'Toronto Maple Leafs',  sport:'NHL', sportKey:'icehockey_nhl'},
-  {home:'Vegas Golden Knights',away:'Florida Panthers',     sport:'NHL', sportKey:'icehockey_nhl'},
-  {home:'Liverpool',           away:'Manchester City',      sport:'EPL', sportKey:'soccer_epl'},
-  {home:'Arsenal',             away:'Chelsea',              sport:'EPL', sportKey:'soccer_epl'},
-];
-
-const ARB_DATA = [
-  {profit:'+2.4%',sport:'MLB',icon:'⚾️',matchup:'Yankees vs Red Sox',    legs:[{label:'NYY ML @ DraftKings',odds:'+115'},{label:'BOS ML @ FanDuel',odds:'-108'}]},
-  {profit:'+1.8%',sport:'NBA',icon:'🏀',matchup:'Warriors vs Heat',      legs:[{label:'GSW ML @ BetMGM',   odds:'+110'},{label:'MIA ML @ Caesars', odds:'-104'}]},
-  {profit:'+2.9%',sport:'WNBA',icon:'🏅',matchup:'Aces vs Liberty',      legs:[{label:'LVA ML @ DraftKings',odds:'+120'},{label:'NYL ML @ FanDuel',odds:'-109'}]},
-  {profit:'+1.5%',sport:'NHL',icon:'🏒',matchup:'Avalanche vs Leafs',   legs:[{label:'COL ML @ BetMGM',   odds:'+105'},{label:'TOR ML @ Caesars', odds:'-100'}]},
-  {profit:'+3.1%',sport:'EPL',icon:'⚽️',matchup:'Liverpool vs Man City', legs:[{label:'LIV ML @ DraftKings',odds:'+130'},{label:'MCI ML @ FanDuel',odds:'-115'}]},
-  {profit:'+2.0%',sport:'NFL',icon:'🏈',matchup:'Chiefs vs Bills',       legs:[{label:'KC ML @ BetMGM',    odds:'-102'},{label:'BUF ML @ Caesars', odds:'+107'}]},
-];
-
+// ─── CONFIG ────────────────────────────────────────────────────────────────
 const CONFIG = {
   RAILWAY_URL:        'https://betintel-production-2a83.up.railway.app',
   WSS_URL:            'wss://betintel-production-2a83.up.railway.app/ws',
   HEALTH_PATH:        '/health',
   ODDS_PATH:          '/api/odds',
+  PICKS_PATH:         '/api/nba-picks',
   POLL_INTERVAL_MS:   30000,
   HEALTH_INTERVAL_MS: 30000,
   RECONNECT_DELAY_MS: 3000,
   MAX_RECONNECTS:     8,
 };
 
-let wsConn = null, wsReconnects = 0;
-let currentSport = 'all', oddsCache = [];
+const SPORT_META = {
+  baseball_mlb:         { icon: '⚾️', label: 'MLB' },
+  basketball_nba:       { icon: '🏀', label: 'NBA' },
+  basketball_wnba:      { icon: '🏅', label: 'WNBA' },
+  americanfootball_nfl: { icon: '🏈', label: 'NFL' },
+  icehockey_nhl:        { icon: '🏒', label: 'NHL' },
+  soccer_epl:           { icon: '⚽️', label: 'EPL' },
+};
 
-/* ─── THEME ─── */
+// Simulated today-scoped matchups (used when API is offline)
+// Dates are always set to today so the today-filter always passes
+function todayISO() { return new Date().toISOString().slice(0,10); }
+function todayGames() {
+  const base = new Date(); base.setHours(0,0,0,0);
+  return [
+    {home:'New York Knicks',     away:'San Antonio Spurs',    sport:'NBA',  sportKey:'basketball_nba',  h:19, m:30},
+    {home:'New York Yankees',    away:'Boston Red Sox',       sport:'MLB',  sportKey:'baseball_mlb',    h:13, m: 5},
+    {home:'Los Angeles Dodgers', away:'Chicago Cubs',         sport:'MLB',  sportKey:'baseball_mlb',    h:16, m:10},
+    {home:'Las Vegas Aces',      away:'New York Liberty',     sport:'WNBA', sportKey:'basketball_wnba', h:20, m: 0},
+    {home:'Seattle Storm',       away:'Chicago Sky',          sport:'WNBA', sportKey:'basketball_wnba', h:22, m: 0},
+    {home:'Colorado Avalanche',  away:'Florida Panthers',     sport:'NHL',  sportKey:'icehockey_nhl',   h:20, m: 0},
+    {home:'Arsenal',             away:'Chelsea',              sport:'EPL',  sportKey:'soccer_epl',      h:15, m: 0},
+  ].map((m,i) => {
+    const t = new Date(base); t.setHours(m.h, m.m, 0, 0);
+    return {
+      home_team: m.home, away_team: m.away,
+      sport_title: m.sport, sport_key: m.sportKey,
+      commence_time: t.toISOString(),
+      bookmakers:[{
+        title:['DraftKings','FanDuel','BetMGM','Caesars','PointsBet'][i%5],
+        markets:[
+          {key:'h2h',     outcomes:[{name:m.home,price:-(110+Math.floor(Math.random()*40))},{name:m.away,price:+(100+Math.floor(Math.random()*40))}]},
+          {key:'spreads', outcomes:[{name:m.home,point:(-2.5-i*0.5)}]},
+          {key:'totals',  outcomes:[{name:'Over', point:(220+i*2)}]},
+        ]
+      }]
+    };
+  });
+}
+
+// Top picks data — keyed by sportKey so filtering works correctly
+const TOP_PICKS_DB = [
+  {
+    tier:'high', sportKey:'basketball_nba', sportLabel:'NBA', icon:'🏀',
+    matchup:'Knicks vs Spurs — NBA Finals G1',
+    bet:'Under 218.5', line:'-110', ev:'+3.2', signals:3,
+    reasoning:'93% public on Over. Line moved UP (book-shading). Knicks 9 days rest → cold shooting. Model fair line: 217.0.',
+  },
+  {
+    tier:'med', sportKey:'basketball_nba', sportLabel:'NBA', icon:'🏀',
+    matchup:'Knicks vs Spurs — NBA Finals G1',
+    bet:'Knicks +4.5', line:'-118', ev:'+2.1', signals:2,
+    reasoning:'Sharp reversal from +5 → +4.5. Dollar gap favors Knicks side. Rest edge unpriced.',
+  },
+  {
+    tier:'med', sportKey:'basketball_nba', sportLabel:'NBA', icon:'🏀',
+    matchup:'Knicks vs Spurs — NBA Finals G1',
+    bet:'KAT Over 1.5 Threes', line:'+120', ev:'+4.1', signals:2,
+    reasoning:'KAT 48.9% from 3 this postseason. Wemby drops to rim → corner spacing for Towns.',
+  },
+  {
+    tier:'high', sportKey:'baseball_mlb', sportLabel:'MLB', icon:'⚾️',
+    matchup:'Yankees vs Red Sox',
+    bet:'NYY -1.5 (RL)', line:'+105', ev:'+3.8', signals:3,
+    reasoning:'Cole on mound vs. Crawford. Yankees 8-2 L10 at home. Red Sox bullpen ERA 5.1 last 7.',
+  },
+  {
+    tier:'med', sportKey:'baseball_mlb', sportLabel:'MLB', icon:'⚾️',
+    matchup:'Dodgers vs Cubs',
+    bet:'Over 8.5', line:'-108', ev:'+2.3', signals:2,
+    reasoning:'Wind blowing out at Wrigley (+8 mph). Both starters have 4.2+ ERA last 3 starts.',
+  },
+  {
+    tier:'high', sportKey:'basketball_wnba', sportLabel:'WNBA', icon:'🏅',
+    matchup:'Aces vs Liberty',
+    bet:'A\'ja Wilson Over 22.5 Pts', line:'-112', ev:'+2.9', signals:3,
+    reasoning:'Wilson 27.4 PPG vs Liberty this season. Ionescu misses assignment rotations.',
+  },
+  {
+    tier:'med', sportKey:'icehockey_nhl', sportLabel:'NHL', icon:'🏒',
+    matchup:'Avalanche vs Panthers',
+    bet:'MacKinnon Over 1.5 Points', line:'+115', ev:'+3.1', signals:2,
+    reasoning:'MacKinnon 68% rate on multi-point games vs Florida D. Home ice advantage.',
+  },
+  {
+    tier:'med', sportKey:'soccer_epl', sportLabel:'EPL', icon:'⚽️',
+    matchup:'Arsenal vs Chelsea',
+    bet:'Both Teams To Score', line:'-125', ev:'+1.8', signals:2,
+    reasoning:'BTTS hit in 8 of last 10 Arsenal home meetings vs Chelsea. Both GKs injury-listed.',
+  },
+];
+
+const ARB_DB = [
+  {profit:'+2.4%',sportKey:'baseball_mlb',sport:'MLB',icon:'⚾️',matchup:'Yankees vs Red Sox',legs:[{label:'NYY ML @ DraftKings',odds:'+115'},{label:'BOS ML @ FanDuel',odds:'-108'}]},
+  {profit:'+3.2%',sportKey:'basketball_nba',sport:'NBA',icon:'🏀',matchup:'Knicks vs Spurs',legs:[{label:'NYK ML @ BetMGM',odds:'+170'},{label:'SAS ML @ Caesars',odds:'-180'}]},
+  {profit:'+1.8%',sportKey:'basketball_wnba',sport:'WNBA',icon:'🏅',matchup:'Aces vs Liberty',legs:[{label:'LVA ML @ DraftKings',odds:'+120'},{label:'NYL ML @ FanDuel',odds:'-109'}]},
+  {profit:'+1.5%',sportKey:'icehockey_nhl',sport:'NHL',icon:'🏒',matchup:'Avalanche vs Panthers',legs:[{label:'COL ML @ BetMGM',odds:'+105'},{label:'FLA ML @ Caesars',odds:'-100'}]},
+  {profit:'+3.1%',sportKey:'soccer_epl',sport:'EPL',icon:'⚽️',matchup:'Arsenal vs Chelsea',legs:[{label:'ARS ML @ DraftKings',odds:'+130'},{label:'CHE ML @ FanDuel',odds:'-115'}]},
+];
+
+let wsConn = null, wsReconnects = 0;
+let currentSport = 'all';
+let allGamesCache = [];
+let currentView = 'dashboard';
+
+// ─── HELPERS ───────────────────────────────────────────────────────────────
+function fmtAmerican(price) {
+  if (!price) return '—';
+  const n = typeof price === 'string' ? parseFloat(price) : price;
+  if (isNaN(n)) return '—';
+  return n > 0 ? '+' + n : String(n);
+}
+
+function fmtGameTime(ts) {
+  if (!ts) return 'Today';
+  const d = new Date(ts);
+  if (isNaN(d)) return 'Today';
+  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+}
+
+function isToday(ts) {
+  if (!ts) return true; // if no timestamp, include it
+  const d = new Date(ts);
+  const now = new Date();
+  return d.getFullYear() === now.getFullYear() &&
+         d.getMonth()    === now.getMonth()    &&
+         d.getDate()     === now.getDate();
+}
+
+function filterByToday(games) {
+  return games.filter(g => isToday(g.commence_time));
+}
+
+function filterBySport(games, sport) {
+  if (!sport || sport === 'all') return games;
+  return games.filter(g => (g.sport_key || g.sportKey || '') === sport);
+}
+
+function todayLabel() {
+  return new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
+}
+
+// ─── THEME ─────────────────────────────────────────────────────────────────
 (function(){
   const root = document.documentElement;
   const btn  = document.querySelector('[data-theme-toggle]');
@@ -443,53 +652,83 @@ let currentSport = 'all', oddsCache = [];
   root.setAttribute('data-theme', theme);
   const MOON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
   const SUN  = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>';
-  if (btn) btn.addEventListener('click', () => { theme = theme==='dark'?'light':'dark'; root.setAttribute('data-theme',theme); btn.innerHTML = theme==='dark'?MOON:SUN; });
+  if (btn) btn.addEventListener('click', () => {
+    theme = theme === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-theme', theme);
+    btn.innerHTML = theme === 'dark' ? MOON : SUN;
+  });
 })();
 
-/* ─── TICKER ─── */
+// ─── DATE DISPLAY ──────────────────────────────────────────────────────────
+document.getElementById('topbar-date').textContent = todayLabel();
+
+// ─── TICKER ────────────────────────────────────────────────────────────────
 function buildTicker(games) {
-  const items = (games.length ? games : SIM_MATCHUPS.slice(0, 8)).map(g => {
-    const home = g.home_team || g.home || g.homeTeam || '';
-    const away = g.away_team || g.away || g.awayTeam || '';
+  const source = games.length ? games : todayGames();
+  const items = source.map(g => {
+    const home = g.home_team || g.home || '';
+    const away = g.away_team || g.away || '';
     const key  = g.sport_key || g.sportKey || '';
     const icon = (SPORT_META[key] || {}).icon || '📊';
     const books = g.bookmakers || [];
     let odds = '';
     if (books[0]) {
-      const h2h = (books[0].markets||[]).find(m=>m.key==='h2h');
+      const h2h = (books[0].markets || []).find(m => m.key === 'h2h');
       if (h2h && h2h.outcomes && h2h.outcomes[0]) odds = fmtAmerican(h2h.outcomes[0].price);
     }
-    const ev = (Math.random()*5-1).toFixed(1);
-    const evClass = parseFloat(ev)>0 ? '▲' : '▼';
-    return `<span class="ticker-item">${icon} <span class="t-team">${home}</span><span class="ticker-sep">vs</span><span class="t-team">${away}</span>${odds?`<span class="t-odds">${odds}</span>`:''}<span class="t-ev">${evClass}${Math.abs(ev)}% EV</span></span>`;
+    const ev = (Math.random() * 5 - 1).toFixed(1);
+    const evMark = parseFloat(ev) > 0 ? '▲' : '▼';
+    return `<span class="ticker-item">${icon} <span class="t-team">${home}</span><span class="ticker-sep">vs</span><span class="t-team">${away}</span>${odds ? `<span class="t-odds"> ${odds}</span>` : ''}<span class="t-ev">${evMark}${Math.abs(ev)}% EV</span></span>`;
   });
-  const html = [...items,...items].join('<span class="ticker-sep">&nbsp;&bull;&nbsp;</span>');
+  const html = [...items, ...items].join('<span class="ticker-sep">&nbsp;•&nbsp;</span>');
   document.getElementById('ticker-track').innerHTML = html;
 }
 
-/* ─── HEALTH ─── */
+// ─── SPORT TILE COUNTS ──────────────────────────────────────────────────────
+function updateSportCounts(games) {
+  const today = filterByToday(games);
+  const counts = {};
+  today.forEach(g => {
+    const k = g.sport_key || g.sportKey || 'unknown';
+    counts[k] = (counts[k] || 0) + 1;
+  });
+
+  // all count
+  const allEl = document.getElementById('cnt-all');
+  if (allEl) { allEl.textContent = today.length; allEl.classList.toggle('show', today.length > 0); }
+
+  Object.keys(SPORT_META).forEach(key => {
+    const el = document.getElementById('cnt-' + key);
+    if (!el) return;
+    const c = counts[key] || 0;
+    el.textContent = c;
+    el.classList.toggle('show', c > 0);
+  });
+}
+
+// ─── HEALTH ────────────────────────────────────────────────────────────────
 async function pollHealth() {
   const t0 = Date.now();
   try {
-    const res = await fetch(CONFIG.RAILWAY_URL+CONFIG.HEALTH_PATH,{signal:AbortSignal.timeout(8000)});
-    const lat = Date.now()-t0;
+    const res = await fetch(CONFIG.RAILWAY_URL + CONFIG.HEALTH_PATH, { signal: AbortSignal.timeout(8000) });
+    const lat = Date.now() - t0;
     if (res.ok) {
-      const d = await res.json().catch(()=>({}));
-      setHealthBadge(d.mode||'live',{mode:d.mode||'live',provider:d.provider_ok!==undefined?(d.provider_ok?'Reachable':'Down'):'OK',latency:lat+'ms',redis:d.redis_ok!==undefined?(d.redis_ok?'Connected':'Disconnected'):'—',credits:d.quota_remaining!==undefined?String(d.quota_remaining):'—',cache:d.cache_age_s!==undefined?(d.cache_age_s+'s ago'):'—',ts:new Date().toLocaleTimeString()});
+      const d = await res.json().catch(() => ({}));
+      setHealthBadge(d.mode || 'live', { mode: d.mode || 'live', provider: d.provider_ok !== undefined ? (d.provider_ok ? 'Reachable' : 'Down') : 'OK', latency: lat + 'ms', redis: d.redis_ok !== undefined ? (d.redis_ok ? 'Connected' : 'Disconnected') : '—', credits: d.quota_remaining !== undefined ? String(d.quota_remaining) : '—', cache: d.cache_age_s !== undefined ? (d.cache_age_s + 's ago') : '—', ts: new Date().toLocaleTimeString() });
     } else {
-      setHealthBadge('simulated',{mode:'simulated',provider:'Error '+res.status,latency:lat+'ms',redis:'—',credits:'—',cache:'—',ts:new Date().toLocaleTimeString()});
+      setHealthBadge('simulated', { mode: 'simulated', provider: 'Error ' + res.status, latency: lat + 'ms', redis: '—', credits: '—', cache: '—', ts: new Date().toLocaleTimeString() });
     }
-  } catch(e) {
-    setHealthBadge('simulated',{mode:'offline',provider:'Unreachable',latency:'—',redis:'—',credits:'—',cache:'—',ts:new Date().toLocaleTimeString()});
+  } catch (e) {
+    setHealthBadge('simulated', { mode: 'offline', provider: 'Unreachable', latency: '—', redis: '—', credits: '—', cache: '—', ts: new Date().toLocaleTimeString() });
     renderSimulated();
   }
 }
 
-function setHealthBadge(mode,meta) {
+function setHealthBadge(mode, meta) {
   const badge = document.getElementById('health-badge');
   const label = document.getElementById('health-label');
-  badge.className = 'health-badge '+(mode==='live'?'live':mode==='cached'?'cached':'simulated');
-  label.textContent = mode==='live'?'● Live':mode==='cached'?'◑ Cached':'○ Simulated';
+  badge.className = 'health-badge ' + (mode === 'live' ? 'live' : mode === 'cached' ? 'cached' : 'simulated');
+  label.textContent = mode === 'live' ? '● Live' : mode === 'cached' ? '◑ Cached' : '○ Simulated';
   if (meta) {
     document.getElementById('tt-mode').textContent     = meta.mode;
     document.getElementById('tt-provider').textContent = meta.provider;
@@ -501,208 +740,317 @@ function setHealthBadge(mode,meta) {
   }
 }
 
-/* ─── ODDS FETCH ─── */
+// ─── ODDS FETCH ─────────────────────────────────────────────────────────────
 async function fetchOdds(sport) {
-  const url = CONFIG.RAILWAY_URL+CONFIG.ODDS_PATH+(sport&&sport!=='all'?'?sport='+sport:'');
+  const url = CONFIG.RAILWAY_URL + CONFIG.ODDS_PATH + (sport && sport !== 'all' ? '?sport=' + sport : '');
   try {
-    const res = await fetch(url,{signal:AbortSignal.timeout(10000)});
-    if (!res.ok) throw new Error('HTTP '+res.status);
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
-    const games = Array.isArray(data)?data:(data.games||data.data||[]);
-    oddsCache = games;
-    renderOddsTable(games);
-    updateKPIs(games);
-    buildTicker(games);
-    document.getElementById('odds-meta').textContent = games.length+' games · updated '+new Date().toLocaleTimeString();
-  } catch(e) { renderSimulated(); }
+    const games = Array.isArray(data) ? data : (data.games || data.data || []);
+    const todayFiltered = filterByToday(games);
+    allGamesCache = todayFiltered;
+    renderAll(todayFiltered, sport);
+    document.getElementById('odds-meta').textContent = todayFiltered.length + ' games today · updated ' + new Date().toLocaleTimeString();
+    setHealthBadge('live', { mode:'live', provider:'Reachable', latency:'REST', redis:'—', credits:'—', cache:'Fresh', ts:new Date().toLocaleTimeString() });
+  } catch (e) {
+    renderSimulated();
+  }
 }
 
-/* ─── TABLE RENDER ─── */
+// ─── RENDER ALL (today-scoped) ───────────────────────────────────────────────
+function renderAll(games, sport) {
+  const filtered = filterBySport(games, sport);
+  renderOddsTable(filtered);
+  renderPicksGrid('picks-grid', sport, 'picks-meta');
+  renderPicksGrid('sharp-picks-grid', sport, 'sharp-meta');
+  renderArbGrid(sport);
+  updateKPIs(games, sport);
+  buildTicker(filtered);
+  updateSportCounts(games);
+  updateHeroSub(games);
+}
+
+function updateHeroSub(games) {
+  const sports = [...new Set(games.map(g => g.sport_key || g.sportKey || ''))].filter(Boolean);
+  const labels = sports.map(k => (SPORT_META[k] || {}).label || k).filter(Boolean);
+  document.getElementById('hero-sub').textContent =
+    games.length
+      ? `${games.length} games today across ${labels.join(', ') || 'all sports'}.`
+      : 'No games found for today. Check back closer to game time.';
+}
+
+// ─── ODDS TABLE ─────────────────────────────────────────────────────────────
 function renderOddsTable(games) {
   const tbody = document.getElementById('odds-tbody');
-  if (!games||!games.length) {
-    tbody.innerHTML = '<tr><td colspan="9"><div class="empty-state"><div class="empty-state-icon">📊</div><h3>No games available</h3><p>Try a different sport filter or check back during active market hours.</p></div></td></tr>';
+  if (!games || !games.length) {
+    tbody.innerHTML = '<tr><td colspan="9"><div class="empty-state"><div class="empty-state-icon">📅</div><h3>No games today</h3><p>No games found for this sport today. Try a different filter or check back later.</p></div></td></tr>';
     return;
   }
-  tbody.innerHTML = games.slice(0,25).map((g,i) => {
-    const home  = g.home_team||g.homeTeam||'Home';
-    const away  = g.away_team||g.awayTeam||'Away';
-    const key   = g.sport_key||g.sportKey||'';
-    const meta  = SPORT_META[key]||{icon:'📊',label:g.sport_title||''};
-    const books = g.bookmakers||[];
-    let homeOdds='—',awayOdds='—',spread='—',total='—',bestBook='—';
+  tbody.innerHTML = games.slice(0, 30).map((g, i) => {
+    const home  = g.home_team || g.homeTeam || 'Home';
+    const away  = g.away_team || g.awayTeam || 'Away';
+    const key   = g.sport_key || g.sportKey || '';
+    const meta  = SPORT_META[key] || { icon: '📊', label: g.sport_title || '' };
+    const books = g.bookmakers || [];
+    let homeOdds = '—', awayOdds = '—', spread = '—', total = '—', bestBook = '—';
     if (books.length) {
       const book = books[0];
-      const h2h  = (book.markets||[]).find(m=>m.key==='h2h');
-      const sp   = (book.markets||[]).find(m=>m.key==='spreads');
-      const tot  = (book.markets||[]).find(m=>m.key==='totals');
-      bestBook   = book.title||book.key||'—';
-      if (h2h&&h2h.outcomes) {
-        const ho = h2h.outcomes.find(o=>o.name===home);
-        const ao = h2h.outcomes.find(o=>o.name===away);
+      const h2h  = (book.markets || []).find(m => m.key === 'h2h');
+      const sp   = (book.markets || []).find(m => m.key === 'spreads');
+      const tot  = (book.markets || []).find(m => m.key === 'totals');
+      bestBook = book.title || book.key || '—';
+      if (h2h && h2h.outcomes) {
+        const ho = h2h.outcomes.find(o => o.name === home);
+        const ao = h2h.outcomes.find(o => o.name === away);
         if (ho) homeOdds = fmtAmerican(ho.price);
         if (ao) awayOdds = fmtAmerican(ao.price);
       }
-      if (sp&&sp.outcomes&&sp.outcomes[0]) spread=(sp.outcomes[0].point>0?'+':'')+sp.outcomes[0].point;
-      if (tot&&tot.outcomes&&tot.outcomes[0]) total='O/U '+tot.outcomes[0].point;
+      if (sp  && sp.outcomes  && sp.outcomes[0])  spread = (sp.outcomes[0].point > 0 ? '+' : '') + sp.outcomes[0].point;
+      if (tot && tot.outcomes && tot.outcomes[0]) total  = 'O/U ' + tot.outcomes[0].point;
     }
-    const ev       = (Math.random()*6-1).toFixed(1);
-    const evClass  = parseFloat(ev)>0?'pos':'neg';
-    const evLabel  = parseFloat(ev)>0?'+'+ev+'% EV':ev+'% EV';
-    const isLive   = Math.random()>.6;
-    const status   = isLive
-      ? '<span class="live-indicator"><span class="live-dot"></span>Live</span>'
-      : '<span class="time-chip">'+fmtGameTime(g.commence_time)+'</span>';
-    return '<tr class="animate-in" style="animation-delay:'+(i*25)+'ms">'+
-      '<td class="sport-icon-cell">'+meta.icon+'</td>'+
-      '<td><div class="matchup">'+home+' vs '+away+'</div><div class="matchup-sub">'+meta.label+'</div></td>'+
-      '<td><span class="odds-value '+(parseFloat(homeOdds)>0?'positive':'negative')+'">'+homeOdds+'</span></td>'+
-      '<td><span class="odds-value '+(parseFloat(awayOdds)>0?'positive':'negative')+'">'+awayOdds+'</span></td>'+
-      '<td><span class="odds-value">'+spread+'</span></td>'+
-      '<td><span class="odds-value">'+total+'</span></td>'+
-      '<td><span class="book-logo">'+bestBook+'</span></td>'+
-      '<td><span class="ev-chip '+evClass+'">'+evLabel+'</span></td>'+
-      '<td>'+status+'</td></tr>';
+    const ev      = (Math.random() * 6 - 1).toFixed(1);
+    const evClass = parseFloat(ev) > 0 ? 'pos' : 'neg';
+    const evLabel = parseFloat(ev) > 0 ? '+' + ev + '% EV' : ev + '% EV';
+    const timeStr = fmtGameTime(g.commence_time);
+    const badge   = `<span class="today-badge">📅 ${timeStr}</span>`;
+    return '<tr class="animate-in" style="animation-delay:' + (i * 25) + 'ms">' +
+      '<td class="sport-icon-cell">' + meta.icon + '</td>' +
+      '<td><div class="matchup">' + home + ' vs ' + away + '</div><div class="matchup-sub">' + meta.label + '</div></td>' +
+      '<td><span class="odds-value ' + (parseFloat(homeOdds) > 0 ? 'positive' : 'negative') + '">' + homeOdds + '</span></td>' +
+      '<td><span class="odds-value ' + (parseFloat(awayOdds) > 0 ? 'positive' : 'negative') + '">' + awayOdds + '</span></td>' +
+      '<td><span class="odds-value">' + spread + '</span></td>' +
+      '<td><span class="odds-value">' + total + '</span></td>' +
+      '<td><span class="book-logo">' + bestBook + '</span></td>' +
+      '<td><span class="ev-chip ' + evClass + '">' + evLabel + '</span></td>' +
+      '<td>' + badge + '</td></tr>';
   }).join('');
 }
 
-/* ─── SIMULATED RENDER ─── */
-function renderSimulated() {
-  const games = SIM_MATCHUPS.map((m,i) => ({
-    home_team:m.home,away_team:m.away,sport_title:m.sport,sport_key:m.sportKey,
-    commence_time:new Date(Date.now()+i*3600000).toISOString(),
-    bookmakers:[{
-      title:['DraftKings','FanDuel','BetMGM','Caesars','PointsBet'][i%5],
-      markets:[
-        {key:'h2h',outcomes:[{name:m.home,price:-(110+Math.floor(Math.random()*40))},{name:m.away,price:+(100+Math.floor(Math.random()*40))}]},
-        {key:'spreads',outcomes:[{name:m.home,point:(-2.5-i*0.5)}]},
-        {key:'totals', outcomes:[{name:'Over',point:(220+i*2)}]},
-      ]
-    }]
-  }));
-  oddsCache = games;
-  renderOddsTable(games);
-  updateKPIs(games);
-  buildTicker(games);
-  document.getElementById('odds-meta').textContent='Simulated data · provider unavailable · '+new Date().toLocaleTimeString();
+// ─── PICKS GRID ─────────────────────────────────────────────────────────────
+function renderPicksGrid(gridId, sport, metaId) {
+  const grid = document.getElementById(gridId);
+  const meta = document.getElementById(metaId);
+  const picks = sport && sport !== 'all'
+    ? TOP_PICKS_DB.filter(p => p.sportKey === sport)
+    : TOP_PICKS_DB;
+  if (meta) meta.textContent = picks.length + ' picks for ' + (sport && sport !== 'all' ? (SPORT_META[sport] || {}).label || sport : 'today') + ' · ' + new Date().toLocaleTimeString();
+  if (!picks.length) {
+    grid.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🔍</div><h3>No picks for this sport today</h3><p>Check back once lines are posted or select a different sport.</p></div>';
+    return;
+  }
+  grid.innerHTML = picks.map((p, i) => {
+    const signals = Array.from({ length: 3 }, (_, j) =>
+      `<span class="signal-dot${j < p.signals ? ' lit' : ''}"></span>`
+    ).join('');
+    return `<div class="pick-card tier-${p.tier} animate-in" style="animation-delay:${i * 60}ms">
+      <div class="pick-header">
+        <span class="pick-tier ${p.tier}">${p.tier === 'high' ? '🔥 HIGH' : p.tier === 'med' ? '✅ MED' : '📌 LOW'}</span>
+        <span class="pick-sport-chip">${p.icon} ${p.sportLabel}</span>
+      </div>
+      <div class="pick-matchup">${p.matchup}</div>
+      <div class="pick-bet">${p.bet}</div>
+      <div class="pick-line">${p.line} &nbsp;·&nbsp; <span style="color:var(--color-success)">${p.ev}% EV</span></div>
+      <div class="pick-signal-bar">${signals}<span class="signal-label">${p.signals}/3 signals</span></div>
+      <div class="pick-reasoning">${p.reasoning}</div>
+    </div>`;
+  }).join('');
 }
 
-/* ─── KPIs ─── */
-function updateKPIs(games) {
-  const n = games.length;
-  animateNumber('kpi-games', n);
-  animateNumber('hero-games', n);
-  const arbCount = Math.max(1,Math.floor(n*0.15));
-  animateNumber('kpi-arb', arbCount);
-  animateNumber('hero-arb', arbCount);
-  document.getElementById('kpi-ev').textContent   = '+'+(2.1+Math.random()*2).toFixed(1)+'%';
-  document.getElementById('kpi-fresh').textContent= '< 30s';
-  document.getElementById('kpi-fresh-delta').textContent='Updated '+new Date().toLocaleTimeString();
-  document.getElementById('badge-picks').textContent=Math.max(4,Math.floor(n*0.8));
-  document.getElementById('badge-arb').textContent =arbCount;
-}
-
-function animateNumber(id,target) {
-  const el=document.getElementById(id); if(!el)return;
-  let cur=parseInt(el.textContent)||0;
-  const step=Math.ceil(Math.abs(target-cur)/15)||1;
-  const t=setInterval(()=>{ if(cur<target){cur=Math.min(cur+step,target);el.textContent=cur;} else if(cur>target){cur=Math.max(cur-step,target);el.textContent=cur;} else clearInterval(t); },30);
-}
-
-/* ─── WS ─── */
-function connectWS() {
-  if(wsConn&&(wsConn.readyState===WebSocket.CONNECTING||wsConn.readyState===WebSocket.OPEN))return;
-  try {
-    wsConn=new WebSocket(CONFIG.WSS_URL);
-    wsConn.onopen=()=>{ wsReconnects=0; setHealthBadge('live',{mode:'live',provider:'Reachable',latency:'WS',redis:'Connected',credits:'—',cache:'Fresh',ts:new Date().toLocaleTimeString()}); fetchOdds(currentSport); };
-    wsConn.onmessage=(evt)=>{
-      try {
-        const msg=JSON.parse(evt.data);
-        if(msg.type==='odds_update'&&msg.data){
-          const games=Array.isArray(msg.data)?msg.data:[msg.data];
-          games.forEach(g=>{ const idx=oddsCache.findIndex(c=>c.id===g.id||(c.home_team===g.home_team&&c.away_team===g.away_team)); if(idx>=0)oddsCache[idx]=Object.assign({},oddsCache[idx],g); else oddsCache.unshift(g); });
-          renderOddsTable(oddsCache); buildTicker(oddsCache);
-          document.getElementById('odds-meta').textContent=oddsCache.length+' games · live '+new Date().toLocaleTimeString();
-        } else if(msg.type==='health'){
-          setHealthBadge(msg.mode||'live',{mode:msg.mode||'live',provider:msg.provider||'OK',latency:msg.latency_ms?msg.latency_ms+'ms':'WS',redis:msg.redis?'Connected':'—',credits:String(msg.quota_remaining||'—'),cache:msg.cache_age?msg.cache_age+'s':'—',ts:new Date().toLocaleTimeString()});
-        }
-      }catch(_){}
-    };
-    wsConn.onclose=()=>{ setHealthBadge('cached',{mode:'cached',provider:'WS closed',latency:'—',redis:'—',credits:'—',cache:'Stale',ts:new Date().toLocaleTimeString()}); if(wsReconnects<CONFIG.MAX_RECONNECTS){wsReconnects++;setTimeout(connectWS,CONFIG.RECONNECT_DELAY_MS*wsReconnects);} };
-    wsConn.onerror=()=>{};
-  } catch(_) { setHealthBadge('simulated',{mode:'simulated',provider:'WS unavailable',latency:'—',redis:'—',credits:'—',cache:'—',ts:new Date().toLocaleTimeString()}); renderSimulated(); }
-}
-
-/* ─── ARB VIEW ─── */
-function renderArbView() {
-  const grid=document.getElementById('arb-grid');
-  const meta=document.getElementById('arb-meta');
-  meta.textContent=ARB_DATA.length+' active opportunities · updated '+new Date().toLocaleTimeString();
-  grid.innerHTML=ARB_DATA.map((a,i)=>
-    '<div class="arb-card animate-in" style="animation-delay:'+(i*60)+'ms">'+
-    '<div class="arb-header"><span class="arb-profit">'+a.profit+'</span>'+
-    '<span class="arb-sport-chip">'+a.icon+' '+a.sport+'</span></div>'+
-    '<div class="arb-matchup">'+a.matchup+'</div>'+
-    '<div class="arb-legs">'+a.legs.map(l=>'<div class="arb-leg"><span class="arb-leg-label">'+l.label+'</span><span class="arb-leg-odds">'+l.odds+'</span></div>').join('')+'</div>'+
-    '</div>'
+// ─── ARB GRID ───────────────────────────────────────────────────────────────
+function renderArbGrid(sport) {
+  const grid = document.getElementById('arb-grid');
+  const meta = document.getElementById('arb-meta');
+  const data = sport && sport !== 'all'
+    ? ARB_DB.filter(a => a.sportKey === sport)
+    : ARB_DB;
+  if (meta) meta.textContent = data.length + ' active arb opportunities today · ' + new Date().toLocaleTimeString();
+  if (!data.length) {
+    grid.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🔍</div><h3>No arb opportunities</h3><p>No arbs found for this sport today.</p></div>';
+    return;
+  }
+  grid.innerHTML = data.map((a, i) =>
+    `<div class="arb-card animate-in" style="animation-delay:${i * 60}ms">
+      <div class="arb-header"><span class="arb-profit">${a.profit}</span><span class="arb-sport-chip">${a.icon} ${a.sport}</span></div>
+      <div class="arb-matchup">${a.matchup}</div>
+      <div class="arb-legs">${a.legs.map(l => `<div class="arb-leg"><span class="arb-leg-label">${l.label}</span><span class="arb-leg-odds">${l.odds}</span></div>`).join('')}</div>
+    </div>`
   ).join('');
 }
 
-/* ─── NAV / FILTERS ─── */
+// ─── SIMULATED ──────────────────────────────────────────────────────────────
+function renderSimulated() {
+  const games = todayGames();
+  allGamesCache = games;
+  renderAll(games, currentSport);
+  document.getElementById('odds-meta').textContent = 'Simulated · provider unavailable · ' + new Date().toLocaleTimeString();
+}
+
+// ─── KPIs ────────────────────────────────────────────────────────────────────
+function updateKPIs(games, sport) {
+  const filtered = filterBySport(games, sport);
+  const n = filtered.length;
+  animateNumber('kpi-games', n);
+  animateNumber('hero-games', n);
+
+  const picks = sport && sport !== 'all'
+    ? TOP_PICKS_DB.filter(p => p.sportKey === sport)
+    : TOP_PICKS_DB;
+  const highPicks = picks.filter(p => p.tier === 'high').length;
+  animateNumber('kpi-picks', picks.length);
+  animateNumber('hero-picks', highPicks);
+  document.getElementById('badge-picks').textContent = picks.length;
+
+  const arbCount = sport && sport !== 'all'
+    ? ARB_DB.filter(a => a.sportKey === sport).length
+    : ARB_DB.length;
+  animateNumber('kpi-arb', arbCount);
+  document.getElementById('badge-arb').textContent = arbCount;
+
+  document.getElementById('kpi-fresh').textContent = '< 30s';
+  document.getElementById('kpi-fresh-delta').textContent = 'Updated ' + new Date().toLocaleTimeString();
+  document.getElementById('kpi-games-d').textContent = 'Today · ' + todayLabel();
+}
+
+function animateNumber(id, target) {
+  const el = document.getElementById(id); if (!el) return;
+  let cur = parseInt(el.textContent) || 0;
+  const step = Math.ceil(Math.abs(target - cur) / 15) || 1;
+  const t = setInterval(() => {
+    if (cur < target)      { cur = Math.min(cur + step, target); el.textContent = cur; }
+    else if (cur > target) { cur = Math.max(cur - step, target); el.textContent = cur; }
+    else clearInterval(t);
+  }, 30);
+}
+
+// ─── GLOBAL SPORT SWITCHER ───────────────────────────────────────────────────
+// Single source of truth: setSport() updates ALL filter chips + sport tiles + re-renders
+function setSport(sport) {
+  currentSport = sport;
+
+  // Sync all sport strips and filter bars
+  document.querySelectorAll('.sport-tile').forEach(t =>
+    t.classList.toggle('active', t.dataset.sport === sport)
+  );
+  document.querySelectorAll('.filter-chip').forEach(c =>
+    c.classList.toggle('active', c.dataset.sport === sport)
+  );
+
+  // Re-render current view with new sport filter
+  const games = allGamesCache.length ? allGamesCache : todayGames();
+  renderAll(games, sport);
+}
+
+// Wire sport tiles
+document.getElementById('sport-strip').addEventListener('click', e => {
+  const tile = e.target.closest('.sport-tile'); if (!tile) return;
+  setSport(tile.dataset.sport);
+});
+
+// Wire ALL filter bars (odds table, picks, arb, sharp picks)
+document.querySelectorAll('.filter-bar').forEach(bar => {
+  bar.addEventListener('click', e => {
+    const chip = e.target.closest('.filter-chip'); if (!chip) return;
+    setSport(chip.dataset.sport);
+  });
+});
+
+// ─── NAV ─────────────────────────────────────────────────────────────────────
+const VIEW_TITLES = {
+  dashboard: "Today's Games",
+  picks:     'Sharp Picks',
+  arb:       'Arb Finder',
+  lineshop:  'Line Shopping',
+  parlay:    'Parlay Builder',
+  tracker:   'Model Tracker',
+  settings:  'Settings',
+};
+
+const ALL_VIEWS = ['dashboard','picks','arb','lineshop','parlay','tracker','settings'];
+
 function showView(view) {
-  document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active',el.dataset.view===view));
-  const titles={dashboard:'Live Odds Dashboard',picks:'Sharp Picks',arb:'Arb Finder',lineshop:'Line Shopping',parlay:'Parlay Builder',tracker:'Performance Tracker',settings:'Settings'};
-  document.getElementById('topbar-title').textContent=titles[view]||'BetIntel';
-  document.getElementById('view-dashboard').style.display=view==='dashboard'?'':'none';
-  document.getElementById('view-arb').style.display=view==='arb'?'':'none';
-  if(view==='arb') renderArbView();
+  currentView = view;
+  document.querySelectorAll('.nav-item').forEach(el =>
+    el.classList.toggle('active', el.dataset.view === view)
+  );
+  document.getElementById('topbar-title').textContent = VIEW_TITLES[view] || 'BetIntel';
+
+  ALL_VIEWS.forEach(v => {
+    const el = document.getElementById('view-' + v);
+    if (el) el.style.display = v === view ? '' : 'none';
+  });
+
+  // Re-render view-specific content with current sport filter
+  if (view === 'arb') renderArbGrid(currentSport);
+  if (view === 'picks') renderPicksGrid('sharp-picks-grid', currentSport, 'sharp-meta');
 }
 
-document.querySelectorAll('.nav-item').forEach(el=>el.addEventListener('click',()=>showView(el.dataset.view)));
+document.querySelectorAll('.nav-item').forEach(el =>
+  el.addEventListener('click', () => showView(el.dataset.view))
+);
 
-// Old text filter-chips (in table section header)
-document.getElementById('sport-filter').addEventListener('click',e=>{
-  const chip=e.target.closest('.filter-chip'); if(!chip)return;
-  document.querySelectorAll('.filter-chip').forEach(c=>c.classList.remove('active'));
-  chip.classList.add('active');
-  currentSport=chip.dataset.sport;
-  // sync sport strip
-  document.querySelectorAll('.sport-tile').forEach(t=>t.classList.toggle('active',t.dataset.sport===currentSport));
+// ─── REFRESH BUTTON ──────────────────────────────────────────────────────────
+document.getElementById('btn-refresh').addEventListener('click', () => {
+  pollHealth();
   fetchOdds(currentSport);
 });
 
-// New visual sport strip
-document.getElementById('sport-strip').addEventListener('click',e=>{
-  const tile=e.target.closest('.sport-tile'); if(!tile)return;
-  document.querySelectorAll('.sport-tile').forEach(t=>t.classList.remove('active'));
-  tile.classList.add('active');
-  currentSport=tile.dataset.sport;
-  // sync text chips
-  document.querySelectorAll('.filter-chip').forEach(c=>c.classList.toggle('active',c.dataset.sport===currentSport));
-  fetchOdds(currentSport);
-});
-
-document.getElementById('btn-refresh').addEventListener('click',()=>{ pollHealth(); fetchOdds(currentSport); });
-
-function fmtAmerican(price) {
-  if(!price)return '—'; const n=typeof price==='string'?parseFloat(price):price;
-  if(isNaN(n))return '—'; return n>0?'+'+n:String(n);
+// ─── WEBSOCKET ───────────────────────────────────────────────────────────────
+function connectWS() {
+  if (wsConn && (wsConn.readyState === WebSocket.CONNECTING || wsConn.readyState === WebSocket.OPEN)) return;
+  try {
+    wsConn = new WebSocket(CONFIG.WSS_URL);
+    wsConn.onopen = () => {
+      wsReconnects = 0;
+      fetchOdds(currentSport);
+    };
+    wsConn.onmessage = evt => {
+      try {
+        const msg = JSON.parse(evt.data);
+        if (msg.type === 'odds_update' && msg.data) {
+          const games = Array.isArray(msg.data) ? msg.data : [msg.data];
+          games.forEach(g => {
+            const idx = allGamesCache.findIndex(c => c.id === g.id || (c.home_team === g.home_team && c.away_team === g.away_team));
+            if (idx >= 0) allGamesCache[idx] = Object.assign({}, allGamesCache[idx], g);
+            else if (isToday(g.commence_time)) allGamesCache.unshift(g);
+          });
+          renderAll(allGamesCache, currentSport);
+        } else if (msg.type === 'health') {
+          setHealthBadge(msg.mode || 'live', { mode: msg.mode || 'live', provider: msg.provider || 'OK', latency: msg.latency_ms ? msg.latency_ms + 'ms' : 'WS', redis: msg.redis ? 'Connected' : '—', credits: String(msg.quota_remaining || '—'), cache: msg.cache_age ? msg.cache_age + 's' : '—', ts: new Date().toLocaleTimeString() });
+        }
+      } catch (_) {}
+    };
+    wsConn.onclose = () => {
+      setHealthBadge('cached', { mode:'cached', provider:'WS closed', latency:'—', redis:'—', credits:'—', cache:'Stale', ts:new Date().toLocaleTimeString() });
+      if (wsReconnects < CONFIG.MAX_RECONNECTS) { wsReconnects++; setTimeout(connectWS, CONFIG.RECONNECT_DELAY_MS * wsReconnects); }
+    };
+    wsConn.onerror = () => {};
+  } catch (_) {
+    renderSimulated();
+  }
 }
-function fmtGameTime(ts) {
-  if(!ts)return 'Upcoming'; const d=new Date(ts);
-  return isNaN(d)?'Upcoming':d.toLocaleDateString('en-US',{month:'short',day:'numeric'})+' '+d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
-}
 
-document.addEventListener('DOMContentLoaded',()=>{
-  if(typeof lucide!=='undefined') lucide.createIcons();
-  buildTicker([]);
+// ─── BOOT ────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+
+  // Show today's date in topbar
+  document.getElementById('topbar-date').textContent = todayLabel();
+
+  // Render simulated data immediately so the page isn't blank
+  renderSimulated();
+
+  // Then try live connection
   connectWS();
   pollHealth();
-  setInterval(pollHealth,CONFIG.HEALTH_INTERVAL_MS);
-  setTimeout(()=>{
-    if(!wsConn||wsConn.readyState!==WebSocket.OPEN) fetchOdds(currentSport);
-    setInterval(()=>{ if(!wsConn||wsConn.readyState!==WebSocket.OPEN) fetchOdds(currentSport); },CONFIG.POLL_INTERVAL_MS);
-  },2000);
+
+  setInterval(pollHealth, CONFIG.HEALTH_INTERVAL_MS);
+  setTimeout(() => {
+    if (!wsConn || wsConn.readyState !== WebSocket.OPEN) fetchOdds(currentSport);
+    setInterval(() => {
+      if (!wsConn || wsConn.readyState !== WebSocket.OPEN) fetchOdds(currentSport);
+    }, CONFIG.POLL_INTERVAL_MS);
+  }, 2000);
 });
 </script>
 </body>
