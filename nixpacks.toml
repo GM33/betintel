@@ -1,5 +1,6 @@
 [variables]
 NIXPACKS_NO_NODE = "1"
+PYTHONPATH = "/app"
 
 [phases.setup]
 nixPkgs = ["python311", "gcc", "libpq"]
@@ -11,4 +12,5 @@ cmds = ["pip install --no-cache-dir -r mlb/requirements.txt"]
 cmds = []
 
 [start]
-cmd = "uvicorn mlb.api.main:app --host 0.0.0.0 --port $PORT"
+# Shell form so $PORT env var expands correctly at runtime
+cmd = "sh -c 'uvicorn mlb.api.main:app --host 0.0.0.0 --port ${PORT:-8080}'"

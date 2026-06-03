@@ -15,6 +15,7 @@ COPY . ./mlb/
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
-EXPOSE 8001
+EXPOSE 8080
 
-CMD ["uvicorn", "mlb.api.main:app", "--host", "0.0.0.0", "--port", "8001"]
+# Shell form so $PORT expands at runtime (Railway injects PORT dynamically)
+CMD sh -c "uvicorn mlb.api.main:app --host 0.0.0.0 --port ${PORT:-8080}"
