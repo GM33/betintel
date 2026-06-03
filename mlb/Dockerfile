@@ -17,5 +17,4 @@ ENV PYTHONUNBUFFERED=1
 
 EXPOSE 8080
 
-# Shell form so $PORT expands at runtime (Railway injects PORT dynamically)
-CMD sh -c "uvicorn mlb.api.main:app --host 0.0.0.0 --port ${PORT:-8080}"
+CMD ["sh", "-c", "uvicorn mlb.api.main:app --host 0.0.0.0 --port $PORT"]
