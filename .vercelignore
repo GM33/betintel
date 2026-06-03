@@ -1,0 +1,11 @@
+# Python worker files — Vercel must never see these
+mlb/
+wnba/
+nba/
+ws/
+config.py
+requirements.txt
+nixpacks.toml
+railway.toml
+Dockerfile
+*.py

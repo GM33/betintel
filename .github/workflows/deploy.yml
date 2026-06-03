@@ -1,0 +1,65 @@
+name: BetIntel Deploy Pipeline
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      workers: ${{ steps.filter.outputs.workers }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - 'api/**'
+              - 'index.html'
+              - 'vercel.json'
+              - 'frontend/**'
+            workers:
+              - 'mlb/**'
+              - 'wnba/**'
+              - 'nba/**'
+              - 'ws/**'
+              - 'config.py'
+              - 'railway.toml'
+              - 'nixpacks.toml'
+              - 'requirements.txt'
+
+  deploy-frontend:
+    name: Deploy Frontend to Vercel
+    needs: detect-changes
+    if: needs.detect-changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Deploy to Vercel
+        run: npx vercel --prod --token=${{ secrets.VERCEL_TOKEN }} --yes
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+  deploy-workers:
+    name: Deploy Workers to Railway
+    needs: detect-changes
+    if: needs.detect-changes.outputs.workers == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node for Railway CLI
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Deploy to Railway
+        run: npx @railway/cli up --service betintel-workers --detach
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}

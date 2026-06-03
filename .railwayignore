@@ -1,5 +1,9 @@
-package.json
-package-lock.json
-node_modules
+# Frontend files — Railway must never see these
+frontend/
 index.html
 vercel.json
+.vercelignore
+package.json
+package-lock.json
+node_modules/
+.vscode/

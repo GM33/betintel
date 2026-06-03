@@ -4,7 +4,7 @@
     "TENNIS_SPORT_KEY_NOTES": "Roland Garros active May17-Jun7. Next: tennis_atp_wimbledon (Jun21-Jul12). Grass swing: tennis_atp_stuttgart (Jun6-14), tennis_atp_queens (Jun13-21). General ATP fallback: tennis_atp"
   },
   "rewrites": [
-    { "source": "/", "destination": "/api/index" }
+    { "source": "/", "destination": "/index.html" }
   ],
   "functions": {
     "api/index.js": {
@@ -46,6 +46,34 @@
     "api/nba-cron.js": {
       "memory": 128,
       "maxDuration": 30
+    },
+    "api/arb.js": {
+      "memory": 256,
+      "maxDuration": 15
+    },
+    "api/event-odds.js": {
+      "memory": 128,
+      "maxDuration": 10
+    },
+    "api/sports.js": {
+      "memory": 128,
+      "maxDuration": 5
+    },
+    "api/health.js": {
+      "memory": 128,
+      "maxDuration": 5
+    },
+    "api/nba-health.js": {
+      "memory": 128,
+      "maxDuration": 5
+    },
+    "api/checkout.js": {
+      "memory": 128,
+      "maxDuration": 10
+    },
+    "api/railway-events.js": {
+      "memory": 128,
+      "maxDuration": 10
     }
   },
   "headers": [
