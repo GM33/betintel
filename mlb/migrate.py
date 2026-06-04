@@ -1,27 +1,25 @@
 """Run this once to apply schema.sql to your production database."""
 import psycopg2
-import os
 from pathlib import Path
-from dotenv import load_dotenv
 
-load_dotenv()
-
-def run_migrations():
-    # Strip whitespace/newlines — Railway dashboard copy-paste sometimes
-    # injects a trailing \n which causes psycopg2 to request database "railway\n"
-    db_url = (
-    "postgresql://postgres:cgktPPerQvmdJMyAuYcMAxkUsqoniycZ@postgres.railway.internal:5432/railway"
+# Internal Railway hostname — no env var needed
+_DB_URL = (
+    "postgresql://postgres:cgktPPerQvmdJMyAuYcMAxkUsqoniycZ"
+    "@postgres.railway.internal:5432/railway"
 )
 
+
+def run_migrations():
     schema_path = Path(__file__).parent / "db" / "schema.sql"
     sql = schema_path.read_text()
-    conn = psycopg2.connect(db_url)
+    conn = psycopg2.connect(_DB_URL)
     cur = conn.cursor()
     cur.execute(sql)
     conn.commit()
     cur.close()
     conn.close()
     print("✅ MLB schema migrations applied successfully.")
+
 
 if __name__ == "__main__":
     run_migrations()
