@@ -10,6 +10,10 @@ def get_db():
     return psycopg2.connect(DATABASE_URL)
 
 def fetch_odds(snapshot_type: str = "pre_game"):
+    if not ODDS_API_KEY:
+        log.error("fetch_odds: ODDS_API_KEY not set — skipping odds ingestion")
+        return []
+
     url = f"{ODDS_BASE}/sports/baseball_mlb/odds"
     params = {
         "apiKey": ODDS_API_KEY,
@@ -18,9 +22,22 @@ def fetch_odds(snapshot_type: str = "pre_game"):
         "oddsFormat": "american",
         "dateFormat": "iso"
     }
-    resp = requests.get(url, params=params, timeout=15)
-    resp.raise_for_status()
-    events = resp.json()
+
+    try:
+        resp = requests.get(url, params=params, timeout=15)
+        resp.raise_for_status()
+        events = resp.json()
+    except requests.exceptions.HTTPError as e:
+        body = ""
+        try:
+            body = resp.text[:500]
+        except Exception:
+            pass
+        log.error(f"fetch_odds: HTTP {resp.status_code} from Odds API — skipping: {e} | body={body!r}")
+        return []
+    except Exception as e:
+        log.error(f"fetch_odds: unexpected error — skipping odds ingestion: {e}")
+        return []
 
     conn = get_db()
     cur = conn.cursor()
@@ -76,3 +93,4 @@ def fetch_odds(snapshot_type: str = "pre_game"):
     cur.close()
     conn.close()
     log.info(f"fetch_odds [{snapshot_type}]: {rows_inserted} rows for {len(events)} events")
+    return events
