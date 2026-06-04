@@ -1,11 +1,14 @@
 -- Migration 004: add calibration_date computed column + unique constraint
--- Enables idempotent upserts in run_calibration.py on
--- (market_type, last_n_days, calibration_date).
+-- Fix: use computed_at::date cast (immutable) instead of DATE() function
 
--- Add calibration_date column (date-only extract of computed_at)
+-- Add calibration_date as a regular column (not generated — avoids immutability error)
 ALTER TABLE model_calibration
-    ADD COLUMN IF NOT EXISTS calibration_date DATE
-        GENERATED ALWAYS AS (DATE(computed_at)) STORED;
+    ADD COLUMN IF NOT EXISTS calibration_date DATE;
+
+-- Backfill existing rows
+UPDATE model_calibration
+    SET calibration_date = computed_at::date
+    WHERE calibration_date IS NULL;
 
 -- Unique constraint for ON CONFLICT upsert
 DO $$
