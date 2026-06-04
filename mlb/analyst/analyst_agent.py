@@ -17,6 +17,7 @@ Your job:
 - Audit each card for data quality, model consistency, and edge legitimacy.
 - Approve, downgrade, or reject each card.
 - Never add hype without statistical basis.
+- Apply the June 3, 2026 BetIntel recalibration rules for moneylines and totals.
 
 For each card you receive as JSON, output JSON with exactly these fields:
 {
@@ -28,18 +29,30 @@ For each card you receive as JSON, output JSON with exactly these fields:
   "rejection_reason": "<one sentence if REJECT, else null>"
 }
 
-Rules:
+Core rules:
 - REJECT if lineup_confirmed is false.
 - REJECT if sp_confirmed is false.
-- REJECT if edge < 0.03.
-- DOWNGRADE to LOW if edge is 0.03-0.04 or if any key data field is null.
-- APPROVE HIGH if edge >= 0.06 and all fields populated.
-- APPROVE MEDIUM if edge >= 0.04 and most fields populated.
-- Return only valid JSON. No other fields.
+- REJECT if best edge < 0.03.
+- DOWNGRADE to LOW if best edge is 0.03-0.04 or if any key data field is null.
+- APPROVE HIGH if best edge >= 0.06 and all fields populated.
+- APPROVE MEDIUM if best edge >= 0.04 and most fields populated.
+
+June 3 recalibration rules:
+- Treat starting pitcher regression as a top-tier signal. If sp_era_gap >= 1.5, downgrade that team's side and mention regression risk.
+- Treat bullpen fatigue as material for totals and late-innings side risk. If bp_fatigue_idx >= 12, do not approve an under unless edge >= 0.06 and the risk sentence explicitly mentions bullpen variance.
+- Treat road underdog value as actionable. If underdog_confidence_flag = 1 and the best edge is >= 0.04, do not reject solely because the team is an underdog.
+- Treat team slugging delta as a directional signal. If abs(team_slg_delta) >= 0.015, mention it in the key_driver when relevant.
+- Treat park_total_adjustment <= -0.05 as an under lean boost and >= 0.05 as an over lean boost.
+- Reduce trust in generic home-field arguments; do not use venue alone as the key_driver.
+- If feature_summary is present, incorporate it into the explanation.
+
+Return only valid JSON. No other fields.
 """
+
 
 def get_db():
     return psycopg2.connect(DATABASE_URL)
+
 
 def run_analyst_agent_for_today():
     conn = get_db()
@@ -57,6 +70,13 @@ def run_analyst_agent_for_today():
     approved = rejected = 0
 
     for row in rows:
+        best_edge = max([
+            e for e in [
+                row.get("edge_over"), row.get("edge_under"),
+                row.get("edge_home"), row.get("edge_away")
+            ] if e is not None
+        ], default=None)
+
         card_input = {
             "game_id": row["game_id"],
             "market_type": row["market_type"],
@@ -73,6 +93,7 @@ def run_analyst_agent_for_today():
             "edge_under": row.get("edge_under"),
             "edge_home": row.get("edge_home"),
             "edge_away": row.get("edge_away"),
+            "best_edge": best_edge,
             "line": row.get("line"),
             "over_odds": row.get("over_odds"),
             "under_odds": row.get("under_odds"),
@@ -81,6 +102,12 @@ def run_analyst_agent_for_today():
             "weather_temp_f": row.get("weather_temp_f"),
             "weather_conditions": row.get("weather_conditions"),
             "venue": row.get("venue_name"),
+            "feature_summary": row.get("key_driver"),
+            "sp_era_gap": row.get("sp_era_gap"),
+            "bp_fatigue_idx": row.get("bp_fatigue_idx"),
+            "park_total_adjustment": row.get("park_total_adjustment"),
+            "underdog_confidence_flag": row.get("underdog_confidence_flag"),
+            "team_slg_delta": row.get("team_slg_delta"),
             "staking_pct": row.get("staking_pct")
         }
         try:
