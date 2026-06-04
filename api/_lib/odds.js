@@ -4,7 +4,7 @@
 const BASE_URL = process.env.ODDS_API_BASE_URL || 'https://api.the-odds-api.com/v4';
 
 const ALLOWED_SPORTS = new Set(
-  (process.env.BETINTEL_ALLOWED_SPORTS || 'baseball_mlb,basketball_nba,basketball_wnba,americanfootball_nfl,icehockey_nhl,soccer_usa_mls,tennis_atp_french_open')
+  (process.env.BETINTEL_ALLOWED_SPORTS || 'baseball_mlb,basketball_nba,basketball_wnba,americanfootball_nfl,icehockey_nhl,soccer_epl,soccer_usa_mls')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean)
