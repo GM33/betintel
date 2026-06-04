@@ -223,6 +223,10 @@
     .news-team-input::placeholder{color:var(--color-text-faint);}
     /* ─────────────────────────────────────────────────────────────────────── */
 
+    /* ── PROPS STYLES ──────────────────────────────────────────────────────── */
+    .props-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(320px,100%),1fr));gap:var(--space-4);}
+    /* ─────────────────────────────────────────────────────────────────────── */
+
     .empty-state{display:flex;flex-direction:column;align-items:center;text-align:center;padding:var(--space-16) var(--space-8);color:var(--color-text-muted);}
     .empty-state-icon{font-size:3rem;margin-bottom:var(--space-4);opacity:.5;}
     .empty-state h3{font-size:var(--text-base);font-weight:600;color:var(--color-text);margin-bottom:var(--space-1);}
@@ -268,6 +272,10 @@
     <button class="nav-item" data-view="picks">
       <i data-lucide="star"></i> Sharp Picks
       <span class="badge" id="badge-picks" style="display:none"></span>
+    </button>
+    <button class="nav-item" data-view="props">
+      <i data-lucide="zap"></i> Props
+      <span class="badge" id="badge-props" style="display:none">MLB</span>
     </button>
     <button class="nav-item" data-view="arb">
       <i data-lucide="git-branch"></i> Arb Finder
@@ -431,6 +439,27 @@
       </div>
       <div class="picks-grid" id="sharp-picks-grid"></div>
     </section>
+
+    <!-- ── PROPS TAB ─────────────────────────────────────────────────────── -->
+    <section id="view-props" style="display:none">
+      <div class="section-header">
+        <div>
+          <div class="section-title">⚡ MLB Pitcher Props</div>
+          <div class="section-meta" id="props-meta">Strikeout props · Edge-scored · Updated every 5 min</div>
+        </div>
+        <div class="filter-bar" id="props-market-filter">
+          <button class="filter-chip active" data-market="strikeouts">K Props</button>
+        </div>
+      </div>
+      <div class="props-grid" id="bi-props-container">
+        <div class="empty-state">
+          <div class="empty-state-icon">⚡</div>
+          <h3>Loading props…</h3>
+          <p>Fetching today's pitcher prop edges.</p>
+        </div>
+      </div>
+    </section>
+    <!-- ─────────────────────────────────────────────────────────────────── -->
 
     <section id="view-arb" style="display:none">
       <div class="section-header">
@@ -718,9 +747,6 @@ async function fetchPicks(sport) {
 }
 
 // ─── ARB FETCH ─────────────────────────────────────────────────────────────
-// FIX: Use relative /api/arb (Vercel serverless), not RAILWAY_URL.
-// FIX: Send x-betintel-tier: pro header to pass the tier gate in api/arb.js.
-// When sport=all, fetch all supported sports in parallel and merge results.
 async function fetchArb(sport) {
   const ARB_SPORTS = ['baseball_mlb', 'basketball_nba', 'basketball_wnba', 'icehockey_nhl', 'soccer_epl'];
   const sportsToFetch = (sport && sport !== 'all') ? [sport] : ARB_SPORTS;
@@ -735,8 +761,6 @@ async function fetchArb(sport) {
           .then(r => r.ok ? r.json() : null)
           .then(data => {
             if (!data) return [];
-            // api/arb.js returns { sport, opportunities: [...] }
-            // Normalize each opportunity to include sport_key for filtering
             return (data.opportunities || []).map(o => ({
               ...o,
               sport_key: data.sport || s,
@@ -806,7 +830,6 @@ function renderNewsGrid() {
       ? `<img class="news-card-img" src="${a.image}" alt="" loading="lazy" onerror="this.style.display='none'">`
       : '';
 
-    // Odds pill — show home/away ML if available
     let oddsHtml = '';
     if (hasGame && game.odds) {
       const home = game.odds.home != null ? fmtAmerican(game.odds.home) : null;
@@ -992,10 +1015,6 @@ function renderPicksGrid(gridId, sport, metaId) {
 }
 
 // ─── ARB GRID ────────────────────────────────────────────────────────────────
-// FIX: Read correct fields from api/arb.js response:
-//   arb_percent (not profit), home_team/away_team (not matchup),
-//   l.team (not l.label), fmtAmerican(l.price) + l.book (not l.odds),
-//   sport_key (not sport) for the chip label.
 function renderArbGrid(sport) {
   const grid = document.getElementById('arb-grid');
   const meta = document.getElementById('arb-meta');
@@ -1039,6 +1058,7 @@ function switchView(view) {
   document.getElementById('topbar-title').textContent =
     view === 'dashboard' ? "Today's Games" :
     view === 'picks'     ? 'Sharp Picks' :
+    view === 'props'     ? 'MLB Props' :
     view === 'arb'       ? 'Arb Finder' :
     view === 'lineshop'  ? 'Line Shopping' :
     view === 'news'      ? 'News' :
@@ -1046,6 +1066,12 @@ function switchView(view) {
     view === 'tracker'   ? 'Model Tracker' : 'Settings';
   // Lazy-load news on first open
   if (view === 'news' && !newsCache.length) fetchNews(newsSport, newsTeam);
+  // Init props on first open
+  if (view === 'props') {
+    if (window.BetIntel && window.BetIntel.initProps) {
+      window.BetIntel.initProps('bi-props-container', 'mlb', 'strikeouts');
+    }
+  }
 }
 document.querySelectorAll('.nav-item[data-view]').forEach(b =>
   b.addEventListener('click', () => switchView(b.dataset.view)));
@@ -1139,5 +1165,6 @@ setInterval(() => { if (currentView === 'news') fetchNews(newsSport, newsTeam); 
 if (typeof lucide !== 'undefined') lucide.createIcons();
 document.addEventListener('DOMContentLoaded', () => { if (typeof lucide !== 'undefined') lucide.createIcons(); });
 </script>
+<script src="/js/props.js" defer></script>
 </body>
 </html>
