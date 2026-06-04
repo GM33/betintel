@@ -718,16 +718,43 @@ async function fetchPicks(sport) {
 }
 
 // ─── ARB FETCH ─────────────────────────────────────────────────────────────
+// FIX: Use relative /api/arb (Vercel serverless), not RAILWAY_URL.
+// FIX: Send x-betintel-tier: pro header to pass the tier gate in api/arb.js.
+// When sport=all, fetch all supported sports in parallel and merge results.
 async function fetchArb(sport) {
-  const url = CONFIG.RAILWAY_URL + CONFIG.ARB_PATH + (sport && sport !== 'all' ? '?sport=' + sport : '');
+  const ARB_SPORTS = ['baseball_mlb', 'basketball_nba', 'basketball_wnba', 'icehockey_nhl', 'soccer_epl'];
+  const sportsToFetch = (sport && sport !== 'all') ? [sport] : ARB_SPORTS;
+
   try {
-    const res  = await fetch(url, { signal: AbortSignal.timeout(CONFIG.FETCH_TIMEOUT_MS) });
-    if (!res.ok) return;
-    const data = await res.json();
-    allArbCache = Array.isArray(data) ? data : (data.opportunities || []);
+    const results = await Promise.allSettled(
+      sportsToFetch.map(s =>
+        fetch('/api/arb?sport=' + s, {
+          signal: AbortSignal.timeout(CONFIG.FETCH_TIMEOUT_MS),
+          headers: { 'x-betintel-tier': 'pro' },
+        })
+          .then(r => r.ok ? r.json() : null)
+          .then(data => {
+            if (!data) return [];
+            // api/arb.js returns { sport, opportunities: [...] }
+            // Normalize each opportunity to include sport_key for filtering
+            return (data.opportunities || []).map(o => ({
+              ...o,
+              sport_key: data.sport || s,
+            }));
+          })
+      )
+    );
+
+    allArbCache = results
+      .filter(r => r.status === 'fulfilled')
+      .flatMap(r => r.value || [])
+      .sort((a, b) => b.arb_percent - a.arb_percent);
+
     renderArbGrid(sport);
+
     const badge = document.getElementById('badge-arb');
     if (allArbCache.length) { badge.textContent = allArbCache.length; badge.style.display = ''; }
+    else { badge.style.display = 'none'; }
     document.getElementById('kpi-arb').textContent     = allArbCache.length || '0';
     document.getElementById('kpi-arb-sub').textContent = allArbCache.length ? 'Verified cross-book' : 'No verified opportunities';
   } catch(e) { /* best-effort */ }
@@ -965,6 +992,10 @@ function renderPicksGrid(gridId, sport, metaId) {
 }
 
 // ─── ARB GRID ────────────────────────────────────────────────────────────────
+// FIX: Read correct fields from api/arb.js response:
+//   arb_percent (not profit), home_team/away_team (not matchup),
+//   l.team (not l.label), fmtAmerican(l.price) + l.book (not l.odds),
+//   sport_key (not sport) for the chip label.
 function renderArbGrid(sport) {
   const grid = document.getElementById('arb-grid');
   const meta = document.getElementById('arb-meta');
@@ -976,10 +1007,20 @@ function renderArbGrid(sport) {
   }
   if (meta) meta.textContent = arbs.length + ' verified opportunities · ' + new Date().toLocaleTimeString();
   grid.innerHTML = arbs.map((a, i) => {
-    const legsHtml = (a.legs || []).map(l => `<div class="arb-leg"><span class="arb-leg-label">${l.label || ''}</span><span class="arb-leg-odds">${l.odds || ''}</span></div>`).join('');
+    const sportKey  = a.sport_key || '';
+    const sportMeta = SPORT_META[sportKey] || {};
+    const sportChip = sportMeta.label || sportKey.split('_').pop().toUpperCase();
+    const matchup   = (a.home_team && a.away_team) ? a.away_team + ' @ ' + a.home_team : (a.home_team || a.away_team || '—');
+    const profit    = a.arb_percent != null ? '+' + a.arb_percent.toFixed(2) + '%' : '—';
+    const legsHtml  = (a.legs || []).map(l =>
+      `<div class="arb-leg">
+        <span class="arb-leg-label">${l.team || ''} <span style="color:var(--color-text-faint);font-size:9px;">${l.book || ''}</span></span>
+        <span class="arb-leg-odds">${fmtAmerican(l.price)}</span>
+      </div>`
+    ).join('');
     return `<div class="arb-card animate-in" style="animation-delay:${i*40}ms">
-      <div class="arb-header"><span class="arb-profit">${a.profit || ''}</span><span class="arb-sport-chip">${a.sport || ''}</span></div>
-      <div class="arb-matchup">${a.matchup || ''}</div>
+      <div class="arb-header"><span class="arb-profit">${profit}</span><span class="arb-sport-chip">${sportChip}</span></div>
+      <div class="arb-matchup">${matchup}</div>
       <div class="arb-legs">${legsHtml}</div>
     </div>`;
   }).join('');
@@ -1057,7 +1098,7 @@ bindFilter('sharp-sport-filter', async sport => {
   await fetchPicks(sport);
   renderPicksGrid('sharp-picks-grid', sport, 'sharp-meta');
 });
-bindFilter('arb-sport-filter', sport => renderArbGrid(sport));
+bindFilter('arb-sport-filter', sport => { fetchArb(sport); });
 
 // ─── SPORT TILES ─────────────────────────────────────────────────────────────
 document.querySelectorAll('.sport-tile[data-sport]').forEach(tile =>
