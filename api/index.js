@@ -1,14 +1,15 @@
 // api/index.js
 // Serves index.html with WS config injected server-side.
-//
-// Fixes applied (audit):
-//  #4 — Token uses hourly HMAC rotation: betintel-ws-auth:<hourBucket>
-//       Server accepts current hour and previous hour window.
-import fs from 'fs';
-import path from 'path';
-import crypto from 'crypto';
+// Converted from ESM (import/export) to CJS (require/module.exports)
+// to match every other file in api/ and avoid Node ESM/CJS split errors.
 
-export default function handler(req, res) {
+'use strict';
+
+const fs     = require('fs');
+const path   = require('path');
+const crypto = require('crypto');
+
+module.exports = function handler(req, res) {
   if (req.method !== 'GET') {
     res.status(405).end('Method Not Allowed');
     return;
@@ -17,7 +18,7 @@ export default function handler(req, res) {
   const secret = process.env.WS_AUTH_SECRET || '';
   const wsUrl  = process.env.BETINTEL_WS_URL  || '';
 
-  // FIX #4: token encodes current hour so it auto-rotates every 60 min
+  // Token encodes current hour so it auto-rotates every 60 min
   const bucket = Math.floor(Date.now() / 3_600_000);
   const token  = secret
     ? crypto.createHmac('sha256', secret).update(`betintel-ws-auth:${bucket}`).digest('base64')
@@ -44,4 +45,4 @@ export default function handler(req, res) {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.send(injected);
-}
+};
