@@ -1,6 +1,6 @@
 [build]
   builder = "DOCKERFILE"
-  dockerfilePath = "mlb/Dockerfile"
+  dockerfilePath = "Dockerfile"
 
 [deploy]
   healthcheckPath = "/health"
