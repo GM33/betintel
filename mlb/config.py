@@ -5,7 +5,10 @@ load_dotenv()
 MLB_BASE = "https://statsapi.mlb.com/api/v1"
 ODDS_BASE = "https://api.the-odds-api.com/v4"
 ODDS_API_KEY    = os.environ.get("ODDS_API_KEY")
-DATABASE_URL    = os.environ.get("DATABASE_URL")
+DATABASE_URL    = os.environ.get(
+    "DATABASE_URL",
+    "postgresql://postgres:cgktPPerQvmdJMyAuYcMAxkUsqoniycZ@postgres.railway.internal:5432/railway"
+)
 OPENAI_API_KEY  = os.environ.get("OPENAI_API_KEY")
 WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
 EDGE_THRESHOLD  = 0.03
