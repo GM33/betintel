@@ -1,130 +1,70 @@
-"""Startup pipeline — runs in a background thread via mlb/api/main.py lifespan.
+"""startup.py — BetIntel MLB startup pipeline.
 
-Design:
-- Steps 1 (schema) and 2 (seed) are guarded by idempotency checks so re-runs
-  on Railway restart never double-apply migrations or re-seed existing data.
-- Uvicorn + /health return 200 immediately; pipeline_ready flips to True when
-  all 10 steps complete.
-- Any step failure is logged but does NOT crash the web server.
+Called from the FastAPI lifespan hook on every Railway deploy.
+Step 0 (migrations) runs synchronously and MUST succeed before the
+pipeline continues. All other steps are soft — failures are logged
+but never crash uvicorn.
 """
-import os
+import asyncio
 import logging
-from pathlib import Path
-from dotenv import load_dotenv
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
-load_dotenv()
-logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("betintel.startup")
+ET  = ZoneInfo("America/New_York")
 
-DB_URL = "postgresql://postgres:cgktPPerQvmdJMyAuYcMAxkUsqoniycZ@postgres.railway.internal:5432/railway"
-
-
-def step(label, fn):
-    """Fatal step — raises on failure, stopping the pipeline."""
-    log.info(f"\n{'='*50}\n\u25b6 {label}\n{'='*50}")
+def soft_step(name: str, fn, *args, **kwargs):
+    """Run fn(*args, **kwargs); log but never raise on failure."""
     try:
-        fn()
-        log.info(f"\u2705 {label} complete")
+        fn(*args, **kwargs)
+        log.info(f"startup: {name} ✅")
     except Exception as e:
-        log.error(f"\u274c {label} failed: {e}")
-        raise
+        log.error(f"startup: {name} ❌ — {e}")
 
+def run_startup_pipeline():
+    today = datetime.now(ET).strftime("%Y-%m-%d")
 
-def soft_step(label, fn):
-    """Non-fatal step — logs failure but allows pipeline to continue."""
-    log.info(f"\n{'='*50}\n\u25b6 {label}\n{'='*50}")
+    # ──────────────────────────────────────────────────────────────
+    # STEP 0 — Database migrations (HARD — failure stops the pipeline)
+    # ──────────────────────────────────────────────────────────────
     try:
-        fn()
-        log.info(f"\u2705 {label} complete")
+        from mlb.migrate import run_migrations
+        run_migrations()
+        log.info("startup: step 0 — migrations ✅")
     except Exception as e:
-        log.warning(f"\u26a0\ufe0f  {label} skipped (non-fatal): {e}")
+        log.critical(f"startup: step 0 — migrations FAILED: {e}")
+        return  # abort pipeline; uvicorn still starts so health check passes
 
+    # ──────────────────────────────────────────────────────────────
+    # STEPS 1–12 — Soft (failure logged, pipeline continues)
+    # ──────────────────────────────────────────────────────────────
+    from mlb.ingestion.schedule  import fetch_schedule_for_today
+    from mlb.ingestion.lineups   import fetch_lineups_for_today
+    from mlb.ingestion.odds      import fetch_odds
+    from mlb.ingestion.bullpen   import fetch_bullpen_stats
+    from mlb.ingestion.weather   import fetch_weather_for_today
+    from mlb.features.build_k_features   import build_k_features_for_date
+    from mlb.features.build_run_features import build_run_features_for_date
+    from mlb.models.train_k_model    import train_k_model
+    from mlb.models.train_run_model  import train_run_model
+    from mlb.models.predict_k        import predict_k_for_today
+    from mlb.models.predict_runs     import predict_runs_for_today
+    from mlb.models.compute_edges    import compute_k_edges, compute_run_edges
+    from mlb.analyst.analyst_agent   import run_analyst_agent_for_today
 
-def _schema_already_applied():
-    """Return True if the DB already has the model_predictions table."""
-    try:
-        import psycopg2
-        conn = psycopg2.connect(DB_URL)
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT EXISTS (
-                SELECT 1 FROM information_schema.tables
-                WHERE table_schema = 'public'
-                  AND table_name   = 'model_predictions'
-            )
-        """)
-        exists = cur.fetchone()[0]
-        cur.close()
-        conn.close()
-        return exists
-    except Exception:
-        return False
+    soft_step("1 — schedule",      fetch_schedule_for_today)
+    soft_step("2 — lineups",       fetch_lineups_for_today)
+    soft_step("3 — odds",          fetch_odds)
+    soft_step("4 — bullpen",       fetch_bullpen_stats)
+    soft_step("5 — weather",       fetch_weather_for_today)
+    soft_step("6 — k features",    build_k_features_for_date, today)
+    soft_step("7 — run features",  build_run_features_for_date, today)   # NEW v2
+    soft_step("8 — train k",       train_k_model)
+    soft_step("9 — train runs",    train_run_model)
+    soft_step("10 — predict k",    predict_k_for_today)
+    soft_step("11 — predict runs", predict_runs_for_today)
+    soft_step("12 — k edges",      compute_k_edges)
+    soft_step("13 — run edges",    compute_run_edges)
+    soft_step("14 — analyst",      run_analyst_agent_for_today)
 
-
-def _seed_already_done():
-    """Return True if historical seed data exists (at least 1 row in game_context)."""
-    try:
-        import psycopg2
-        conn = psycopg2.connect(DB_URL)
-        cur = conn.cursor()
-        cur.execute("SELECT EXISTS (SELECT 1 FROM game_context LIMIT 1)")
-        exists = cur.fetchone()[0]
-        cur.close()
-        conn.close()
-        return exists
-    except Exception:
-        return False
-
-
-def run():
-    from mlb.migrate import run_migrations
-    from mlb.seed.seed_historical import seed_all
-    from mlb.models.train_k_model import train_k_model
-    from mlb.models.train_run_model import train_run_model
-    from mlb.ingestion.schedule import fetch_schedule
-    from mlb.ingestion.bullpen import fetch_bullpen_usage
-    from mlb.ingestion.odds import fetch_odds
-    from mlb.ingestion.props import fetch_player_props
-    from mlb.ingestion.weather import fetch_weather_for_today
-    from mlb.ingestion.lineups import fetch_lineups
-    from mlb.models.predict_k import predict_k_for_today
-    from mlb.models.predict_runs import predict_runs_for_today
-    from mlb.models.compute_edges import compute_k_edges, compute_run_edges
-    from mlb.analyst.analyst_agent import run_analyst_agent_for_today
-
-    # ── Idempotent steps ──────────────────────────────────────────────
-    if _schema_already_applied():
-        log.info("\u23e9 1/10 Schema already applied — skipping migration")
-    else:
-        step("1/10 Apply DB schema", run_migrations)
-
-    if _seed_already_done():
-        log.info("\u23e9 2/10 Seed data already present — skipping seed")
-    else:
-        step("2/10 Seed historical data (2022-2025)", seed_all)
-
-    # ── Core model steps (fatal) ───────────────────────────────────────
-    step("3/10 Train K strikeout model", train_k_model)
-    step("4/10 Train run expectancy model", train_run_model)
-    step("5/10 Fetch today's schedule", fetch_schedule)
-    step("6/10 Fetch bullpen usage", fetch_bullpen_usage)
-
-    # ── External API steps (non-fatal) ───────────────────────────────
-    soft_step("7/10 Fetch odds", lambda: fetch_odds("pre_game"))
-    soft_step("8/10 Fetch K props", fetch_player_props)
-    soft_step("9/10 Fetch weather + lineups", lambda: [fetch_weather_for_today(), fetch_lineups()])
-
-    # ── Prediction + output (fatal) ──────────────────────────────────
-    step("10/10 Predict + compute edges + analyst", lambda: [
-        predict_k_for_today(),
-        predict_runs_for_today(),
-        compute_k_edges(),
-        compute_run_edges(),
-        run_analyst_agent_for_today()
-    ])
-
-    log.info("\n\u2705 Startup complete. Cards are ready at /cards/mlb/k-props and /cards/mlb/games")
-
-
-if __name__ == "__main__":
-    run()
+    log.info(f"startup: pipeline complete for {today}")
