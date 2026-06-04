@@ -1,36 +1,34 @@
 // api/_lib/nba-model.js
 // BetIntel — NBA Prop + Game Market Model Evaluator
 //
-// Evaluates every live NBA market and returns structured predictions
-// ready for logPrediction() in nba-logger.js.
-//
 // Markets supported:
 //   SPREAD    — line movement + power rating differential
 //   TOTAL     — real pace inflation signal (homePace + awayPace vs league avg)
 //   MONEYLINE — power rating win probability (logistic from netRtg diff)
-//   PROP      — B2B decay + line-move + defensive rating matchup
+//   PROP      — B2B decay + line-move + defensive rating matchup (per player)
 //
 // Signal stack per pick:
 //   1. Line-move signal     — opening vs current line delta
 //   2. Model edge           — model fair prob - market no-vig prob
-//   3. Pace inflation       — combined game pace vs league avg (totals only)
+//   3. Pace inflation       — combined game pace vs league avg (totals)
 //   4. Power rating         — netRtg differential → win probability (ML/spread)
-//   5. Defensive rating     — opponent defRtg vs league avg (props only)
+//   5. Defensive rating     — opponent defRtg vs league avg (props, per player team)
 //   6. B2B decay            — 3% under bias on back-to-back nights (props)
-//   7. Confidence tier      — LOW / MED / HIGH based on edge + signal count
+//   7. Confidence tier      — LOW / MED / HIGH
 
 'use strict';
 
-const { noVig }                                          = require('./no-vig');
+const { noVig }                                             = require('./no-vig');
 const { getTeamStats, LEAGUE_AVG_PACE, LEAGUE_AVG_DEF_RTG } = require('./nba-team-stats');
+const { getOpponentTeam }                                   = require('./nba-rosters');
 
 // ── Constants ────────────────────────────────────────────────────────────────
-const HIGH_EDGE_THRESHOLD  = 0.04;  // 4% model edge for HIGH tier
-const MED_EDGE_THRESHOLD   = 0.025; // 2.5% for MED tier
-const HIGH_MOVE_THRESHOLD  = 0.5;   // points of line movement
-const POWER_BLEND          = 0.40;  // weight of model vs market for moneyline (40/60)
-const DEF_RTG_CAP          = 0.04;  // max ±4% adjustment from defensive rating signal
-const PACE_ADJ_SCALE       = 0.08;  // how strongly pace ratio affects totals edge
+const HIGH_EDGE_THRESHOLD  = 0.04;
+const MED_EDGE_THRESHOLD   = 0.025;
+const HIGH_MOVE_THRESHOLD  = 0.5;
+const POWER_BLEND          = 0.40;
+const DEF_RTG_CAP          = 0.04;
+const PACE_ADJ_SCALE       = 0.08;
 
 // ── Probability helpers ───────────────────────────────────────────────────────
 
@@ -60,49 +58,33 @@ function lineMoveSignal(currentLine, openLine) {
 }
 
 // ── Signal: Pace Inflation ────────────────────────────────────────────────────
-// Returns ratio of expected game pace vs league average.
-// >1.0 = pace-inflated (favors overs), <1.0 = pace-suppressed (favors unders).
-// Uses real team pace data from nba-team-stats.js.
-// Falls back to neutral 1.0 if either team is unresolved.
 
 function paceInflationSignal(homeTeam, awayTeam) {
   const home = getTeamStats(homeTeam);
   const away = getTeamStats(awayTeam);
-  if (!home || !away) return 1.0; // graceful fallback
+  if (!home || !away) return 1.0;
   const combinedPace = (home.pace + away.pace) / 2;
   return combinedPace / LEAGUE_AVG_PACE;
 }
 
-// ── Signal: Power Rating (Moneyline / Spread) ─────────────────────────────────
-// Derives win probability from net rating differential using logistic scaling.
-// k=0.065 calibrated so a 10-pt netRtg gap ≈ 65% win probability.
-// Blended 40% model / 60% market to stay conservative until backtested.
+// ── Signal: Power Rating ──────────────────────────────────────────────────────
 
 function powerRatingSignal(homeTeam, awayTeam) {
   const home = getTeamStats(homeTeam);
   const away = getTeamStats(awayTeam);
-  if (!home || !away) return null; // signal absent — caller falls back to noVig
-  const netDiff   = (home.netRtg - away.netRtg) + 2.5; // +2.5 home court advantage
+  if (!home || !away) return null;
+  const netDiff   = (home.netRtg - away.netRtg) + 2.5;
   const modelProb = 1 / (1 + Math.exp(-0.065 * netDiff));
   return parseFloat(modelProb.toFixed(4));
 }
 
-// ── Signal: Defensive Rating Matchup (Props) ──────────────────────────────────
-// Returns a probability delta for player props based on opponent's defensive
-// rating vs league average. Weak defenses → positive delta for overs.
-// Capped at ±DEF_RTG_CAP (4%) so it cannot single-handedly drive a pick.
-//
-// marketKey hints at which defensive dimension matters:
-//   player_points / player_assists → perimeter defense (defRtg proxy)
-//   player_rebounds               → frontcourt defense (same proxy for now)
+// ── Signal: Defensive Rating Matchup ─────────────────────────────────────────
 
 function defRatingSignal(opponentTeam, isOver) {
   const opp = getTeamStats(opponentTeam);
   if (!opp) return 0;
-  // How much weaker/stronger is opponent defense vs league avg?
-  // Positive = opponent defRtg > league avg = weaker defense = favors overs
-  const defGap  = opp.defRtg - LEAGUE_AVG_DEF_RTG;
-  const rawAdj  = defGap * 0.004; // scale: 1 defRtg point ≈ 0.4% prob shift
+  const defGap    = opp.defRtg - LEAGUE_AVG_DEF_RTG;
+  const rawAdj    = defGap * 0.004;
   const cappedAdj = Math.max(-DEF_RTG_CAP, Math.min(DEF_RTG_CAP, rawAdj));
   return isOver ? cappedAdj : -cappedAdj;
 }
@@ -116,21 +98,19 @@ function b2bDecayFactor(isB2B) {
 // ── Model: SPREAD ─────────────────────────────────────────────────────────────
 
 function evalSpread(outcome, oppOutcome, openLine, homeTeam, awayTeam) {
-  const marketNoVig  = noVigProb(outcome.price, oppOutcome.price);
-  const lineMove     = lineMoveSignal(outcome.point, openLine);
-  const sharpBias    = lineMove.isHighMove ? 0.02 : 0;
-  // Power rating: if team name matches the outcome, add power signal
-  const powerProb    = powerRatingSignal(homeTeam, awayTeam);
+  const marketNoVig = noVigProb(outcome.price, oppOutcome.price);
+  const lineMove    = lineMoveSignal(outcome.point, openLine);
+  const sharpBias   = lineMove.isHighMove ? 0.02 : 0;
+  const powerProb   = powerRatingSignal(homeTeam, awayTeam);
   let powerAdj = 0;
   if (powerProb !== null) {
-    // outcome.name is the team name for spreads; blend model toward power rating
-    const isHome = outcome.name === homeTeam ||
-                   (homeTeam && outcome.name && homeTeam.toLowerCase().includes(outcome.name.toLowerCase()));
+    const isHome = homeTeam && outcome.name &&
+                   homeTeam.toLowerCase().includes(outcome.name.toLowerCase().split(' ').pop());
     const modelSide = isHome ? powerProb : (1 - powerProb);
     powerAdj = (modelSide - marketNoVig) * POWER_BLEND;
   }
-  const modelProb  = Math.min(0.95, Math.max(0.05, marketNoVig + sharpBias + powerAdj));
-  const modelEdge  = modelProb - marketNoVig;
+  const modelProb = Math.min(0.95, Math.max(0.05, marketNoVig + sharpBias + powerAdj));
+  const modelEdge = modelProb - marketNoVig;
   return { marketNoVig, modelProb, modelEdge, lineMove, powerProb };
 }
 
@@ -141,7 +121,6 @@ function evalTotal(outcome, oppOutcome, openLine, homeTeam, awayTeam) {
   const lineMove    = lineMoveSignal(outcome.point, openLine);
   const paceRatio   = paceInflationSignal(homeTeam, awayTeam);
   const isOver      = outcome.name.toLowerCase() === 'over';
-  // Pace ratio >1 favors overs; <1 favors unders
   const paceAdj     = isOver ? (paceRatio - 1) * PACE_ADJ_SCALE : -(paceRatio - 1) * PACE_ADJ_SCALE;
   const modelProb   = Math.min(0.95, Math.max(0.05, marketNoVig + paceAdj));
   const modelEdge   = modelProb - marketNoVig;
@@ -153,51 +132,55 @@ function evalTotal(outcome, oppOutcome, openLine, homeTeam, awayTeam) {
 function evalMoneyline(outcome, oppOutcome, homeTeam, awayTeam) {
   const marketNoVig = noVigProb(outcome.price, oppOutcome.price);
   const powerProb   = powerRatingSignal(homeTeam, awayTeam);
-
   if (powerProb === null) {
-    // No team data — fall back to pure no-vig (honest zero edge)
     return { marketNoVig, modelProb: marketNoVig, modelEdge: 0, lineMove: { delta: null, isHighMove: false }, powerProb: null };
   }
-
-  const isHome    = outcome.name === homeTeam ||
-                    (homeTeam && outcome.name && homeTeam.toLowerCase().includes(outcome.name.toLowerCase()));
-  const modelSide = isHome ? powerProb : (1 - powerProb);
-  // Blend: 40% model, 60% market
+  const isHome      = homeTeam && outcome.name &&
+                      homeTeam.toLowerCase().includes(outcome.name.toLowerCase().split(' ').pop());
+  const modelSide   = isHome ? powerProb : (1 - powerProb);
   const blendedProb = (POWER_BLEND * modelSide) + ((1 - POWER_BLEND) * marketNoVig);
   const modelEdge   = blendedProb - marketNoVig;
-
   return {
     marketNoVig,
-    modelProb: parseFloat(Math.min(0.95, Math.max(0.05, blendedProb)).toFixed(4)),
-    modelEdge: parseFloat(modelEdge.toFixed(4)),
-    lineMove:  { delta: null, isHighMove: false },
+    modelProb:  parseFloat(Math.min(0.95, Math.max(0.05, blendedProb)).toFixed(4)),
+    modelEdge:  parseFloat(modelEdge.toFixed(4)),
+    lineMove:   { delta: null, isHighMove: false },
     powerProb,
   };
 }
 
 // ── Model: PLAYER PROP ────────────────────────────────────────────────────────
+// Uses getOpponentTeam() from nba-rosters.js to find the correct opponent
+// for defRatingSignal(). Falls back to awayTeam if player is unresolved.
 
-function evalProp(outcome, oppOutcome, openLine, isB2B = false, opponentTeam = null) {
+function evalProp(outcome, oppOutcome, openLine, isB2B = false, homeTeam = null, awayTeam = null) {
   const marketNoVig = noVigProb(outcome.price, oppOutcome.price);
   const lineMove    = lineMoveSignal(outcome.point, openLine);
   const decay       = b2bDecayFactor(isB2B);
   const isOver      = outcome.name.toLowerCase().includes('over');
   const decayAdj    = isOver ? (decay - 1) : -(decay - 1);
   const sharpBias   = lineMove.isHighMove ? 0.025 : 0;
-  const defAdj      = defRatingSignal(opponentTeam, isOver);
-  const modelProb   = Math.min(0.95, Math.max(0.05, marketNoVig + decayAdj + sharpBias + defAdj));
-  const modelEdge   = modelProb - marketNoVig;
-  return { marketNoVig, modelProb, modelEdge, lineMove, decay, defAdj: parseFloat(defAdj.toFixed(4)) };
+
+  // Resolve the player's actual opponent using the roster map
+  const playerName   = outcome.description || null;
+  const resolvedOpp  = playerName
+    ? (getOpponentTeam(playerName, homeTeam, awayTeam) || awayTeam)
+    : awayTeam;
+
+  const defAdj    = defRatingSignal(resolvedOpp, isOver);
+  const modelProb = Math.min(0.95, Math.max(0.05, marketNoVig + decayAdj + sharpBias + defAdj));
+  const modelEdge = modelProb - marketNoVig;
+  return { marketNoVig, modelProb, modelEdge, lineMove, decay, defAdj: parseFloat(defAdj.toFixed(4)), resolvedOpp };
 }
 
 // ── Confidence tier ───────────────────────────────────────────────────────────
 
-function confidenceTier(modelEdge, lineMove, marketType) {
+function confidenceTier(modelEdge, lineMove) {
   const absEdge = Math.abs(modelEdge);
   const hasMove = lineMove.isHighMove;
-  if (absEdge >= HIGH_EDGE_THRESHOLD && hasMove)  return 'HIGH';
-  if (absEdge >= HIGH_EDGE_THRESHOLD || hasMove)  return 'MED';
-  if (absEdge >= MED_EDGE_THRESHOLD)               return 'MED';
+  if (absEdge >= HIGH_EDGE_THRESHOLD && hasMove) return 'HIGH';
+  if (absEdge >= HIGH_EDGE_THRESHOLD || hasMove) return 'MED';
+  if (absEdge >= MED_EDGE_THRESHOLD)              return 'MED';
   return 'LOW';
 }
 
@@ -249,15 +232,11 @@ function evaluateEvent(event, openLines = {}) {
           result     = evalTotal(a, b, openLine, homeTeam, awayTeam);
           marketType = 'TOTAL';
         } else {
-          // player_points, player_rebounds, player_assists, etc.
-          // opponentTeam: use the team that is NOT the player's team.
-          // The Odds API does not tell us which team a player is on,
-          // so we default to awayTeam as the opponent (conservative).
-          result     = evalProp(a, b, openLine, false, awayTeam);
+          result     = evalProp(a, b, openLine, false, homeTeam, awayTeam);
           marketType = 'PROP';
         }
 
-        const tier = confidenceTier(result.modelEdge, result.lineMove, marketType);
+        const tier = confidenceTier(result.modelEdge, result.lineMove);
 
         predictions.push({
           gameId:         event.id,
@@ -275,10 +254,10 @@ function evaluateEvent(event, openLines = {}) {
           confidenceTier: tier,
           lineDelta:      result.lineMove.delta,
           isHighMove:     result.lineMove.isHighMove,
-          // Extra debug fields (stripped in nba-picks.js if needed)
-          paceRatio:      result.paceRatio ?? null,
-          powerProb:      result.powerProb ?? null,
-          defAdj:         result.defAdj    ?? null,
+          paceRatio:      result.paceRatio   ?? null,
+          powerProb:      result.powerProb   ?? null,
+          defAdj:         result.defAdj      ?? null,
+          resolvedOpp:    result.resolvedOpp ?? null,
         });
       }
     }
