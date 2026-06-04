@@ -90,21 +90,73 @@ CREATE TABLE IF NOT EXISTS game_run_data (
     is_home INT,
     date DATE,
     runs_scored INT,
+
+    -- Existing offensive context
     team_wrc_plus_vs_hand FLOAT,
     team_iso_vs_hand FLOAT,
     team_obp_vs_hand FLOAT,
+
+    -- Existing pitching context
     opp_sp_xfip FLOAT,
     opp_sp_fip FLOAT,
     opp_sp_k_minus_bb FLOAT,
     opp_sp_gb_rate FLOAT,
     opp_bp_xfip FLOAT,
     opp_bp_ip_last_3d FLOAT,
+
+    -- Existing environment
     park_runs_factor FLOAT,
     temp_f FLOAT,
     wind_speed_mph FLOAT,
     start_time_bucket VARCHAR,
     league VARCHAR,
+
+    -- June 3 upgrade: slugging variance
+    team_slg_recent FLOAT,
+    opp_slg_recent FLOAT,
+    team_slg_delta FLOAT GENERATED ALWAYS AS (team_slg_recent - opp_slg_recent) STORED,
+
+    -- June 3 upgrade: xERA regression gap
+    sp_era FLOAT,
+    sp_proj_era FLOAT,
+    sp_era_gap FLOAT GENERATED ALWAYS AS (sp_proj_era - sp_era) STORED,
+
+    -- June 3 upgrade: bullpen fatigue index
+    bp_fatigue_idx FLOAT,
+
+    -- June 3 upgrade: park total adjustment
+    park_total_adjustment FLOAT GENERATED ALWAYS AS (park_runs_factor - 1.0) STORED,
+
+    -- June 3 upgrade: road underdog confidence flag
+    underdog_confidence_flag SMALLINT DEFAULT 0,
+
     created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS pitcher_stats (
+    pitcher_id INT,
+    p_k_rate FLOAT,
+    p_k_rate_vs_hand FLOAT,
+    p_bb_rate FLOAT,
+    p_swstr_rate FLOAT,
+    p_ip_per_start FLOAT,
+    p_hand INT,
+    -- June 3 upgrade: regression metrics
+    era FLOAT,
+    xfip FLOAT,
+    fip FLOAT,
+    last_updated TIMESTAMPTZ,
+    PRIMARY KEY (pitcher_id, last_updated)
+);
+
+CREATE TABLE IF NOT EXISTS team_offense_stats (
+    team_id INT,
+    k_rate_vs_rh FLOAT,
+    k_rate_vs_lh FLOAT,
+    -- June 3 upgrade: slugging %
+    slugging_pct FLOAT,
+    last_updated TIMESTAMPTZ,
+    PRIMARY KEY (team_id, last_updated)
 );
 
 CREATE TABLE IF NOT EXISTS model_predictions (
@@ -135,6 +187,12 @@ CREATE TABLE IF NOT EXISTS model_predictions (
     key_driver TEXT,
     biggest_risk TEXT,
     staking_pct FLOAT,
+    -- June 3 upgrade: analyst feature signals
+    sp_era_gap FLOAT,
+    bp_fatigue_idx FLOAT,
+    park_total_adjustment FLOAT,
+    underdog_confidence_flag SMALLINT DEFAULT 0,
+    team_slg_delta FLOAT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -163,3 +221,20 @@ CREATE TABLE IF NOT EXISTS model_calibration (
     drift_alert BOOLEAN DEFAULT FALSE,
     computed_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Indexes for June 3 upgrade feature columns
+CREATE INDEX IF NOT EXISTS idx_game_run_data_era_gap
+    ON game_run_data (sp_era_gap DESC NULLS LAST)
+    WHERE sp_era_gap IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_game_run_data_bp_fatigue
+    ON game_run_data (bp_fatigue_idx DESC NULLS LAST)
+    WHERE bp_fatigue_idx IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_game_run_data_underdog_flag
+    ON game_run_data (underdog_confidence_flag)
+    WHERE underdog_confidence_flag = 1;
+
+CREATE INDEX IF NOT EXISTS idx_model_predictions_era_gap
+    ON model_predictions (sp_era_gap DESC NULLS LAST)
+    WHERE sp_era_gap IS NOT NULL;
