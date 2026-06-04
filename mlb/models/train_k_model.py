@@ -22,7 +22,10 @@ def train_k_model(start_season: int = 2021):
             opp_k_rate_vs_hand, opp_bb_rate_vs_hand,
             home_away, g_park_id,
             bp_ip_last_3d, bp_relievers_used_last_3d,
-            ump_k_rate_diff
+            ump_k_rate_diff,
+            -- June 3 upgrade: ERA regression signals
+            COALESCE(era_xera_gap, 0) AS era_xera_gap,
+            COALESCE(era_fip_gap,  0) AS era_fip_gap
         FROM pitcher_k_games
         WHERE EXTRACT(YEAR FROM date) >= %s
           AND k_outs IS NOT NULL
@@ -38,7 +41,6 @@ def train_k_model(start_season: int = 2021):
     feature_cols = [c for c in df.columns if c not in ("game_id", "date", "pitcher_id", "k_outs")]
 
     X = df[feature_cols].fillna(0)
-    # Coerce any object columns to numeric (strings from Postgres TEXT columns)
     X = X.apply(pd.to_numeric, errors="coerce").fillna(0)
     y = df["k_outs"]
 
