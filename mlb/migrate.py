@@ -10,9 +10,7 @@ def run_migrations():
     # Strip whitespace/newlines — Railway dashboard copy-paste sometimes
     # injects a trailing \n which causes psycopg2 to request database "railway\n"
     db_url = (
-    os.environ.get("DATABASE_URL") or
-    os.environ.get("POSTGRES_URL") or
-    os.environ.get("DATABASE_PRIVATE_URL")
+    "postgresql://postgres:cgktPPerQvmdJMyAuYcMAxkUsqoniycZ@postgres.railway.internal:5432/railway"
 )
 
     schema_path = Path(__file__).parent / "db" / "schema.sql"
