@@ -8,6 +8,12 @@ import logging
 
 log = logging.getLogger("betintel.models.compute_edges")
 
+# Bullpen fatigue thresholds (June 3 upgrade)
+BP_CRITICAL_IP   = 18.0   # inflate run mean by 12%
+BP_ELEVATED_IP   = 15.0   # inflate run mean by 6%
+BP_CRITICAL_MULT = 1.12
+BP_ELEVATED_MULT = 1.06
+
 def get_db():
     return psycopg2.connect(DATABASE_URL)
 
@@ -23,6 +29,15 @@ def kelly_stake(p_model, odds_american):
     q = 1 - p_model
     f = (b * p_model - q) / b
     return round(min(max(f * KELLY_FRACTION, 0), MAX_STAKE_PCT), 4)
+
+def _fetch_bp_fatigue(cur, team_id, date_str):
+    """Returns bp_ip_last_3d for a team on a given date, or 0.0 if not found."""
+    cur.execute("""
+        SELECT bp_ip_last_3d FROM bullpen_stats
+        WHERE team_id=%s AND date=%s
+    """, (team_id, date_str))
+    row = cur.fetchone()
+    return float(row[0]) if row and row[0] else 0.0
 
 def compute_k_edges():
     conn = get_db()
@@ -85,13 +100,17 @@ def compute_k_edges():
 def compute_run_edges(gamma: float = 1.86):
     conn = get_db()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+
     cur.execute("""
         SELECT mp.id, mp.game_id, mp.model_mean_home, mp.model_mean_away,
+               gc.home_team_id, gc.away_team_id,
                ms_ml.home_odds, ms_ml.away_odds,
                ms_tot.line AS total_line,
                ms_tot.over_odds AS total_over_odds,
                ms_tot.under_odds AS total_under_odds
         FROM model_predictions mp
+        JOIN game_context gc ON mp.game_id = gc.game_id
         LEFT JOIN LATERAL (
             SELECT home_odds, away_odds FROM market_snapshots
             WHERE game_id = mp.game_id AND market_type = 'h2h'
@@ -115,6 +134,26 @@ def compute_run_edges(gamma: float = 1.86):
         mu_a = row["model_mean_away"]
         if not mu_h or not mu_a:
             continue
+
+        # ── Bullpen Fatigue Multiplier (June 3 upgrade) ───────────────────────
+        bp_home = _fetch_bp_fatigue(cur, row["home_team_id"], today)
+        bp_away = _fetch_bp_fatigue(cur, row["away_team_id"], today)
+
+        if bp_home >= BP_CRITICAL_IP:
+            mu_h = mu_h * BP_CRITICAL_MULT
+            log.debug(f"BP_CRITICAL home team {row['home_team_id']}: mu_h inflated to {mu_h:.2f}")
+        elif bp_home >= BP_ELEVATED_IP:
+            mu_h = mu_h * BP_ELEVATED_MULT
+            log.debug(f"BP_ELEVATED home team {row['home_team_id']}: mu_h inflated to {mu_h:.2f}")
+
+        if bp_away >= BP_CRITICAL_IP:
+            mu_a = mu_a * BP_CRITICAL_MULT
+            log.debug(f"BP_CRITICAL away team {row['away_team_id']}: mu_a inflated to {mu_a:.2f}")
+        elif bp_away >= BP_ELEVATED_IP:
+            mu_a = mu_a * BP_ELEVATED_MULT
+            log.debug(f"BP_ELEVATED away team {row['away_team_id']}: mu_a inflated to {mu_a:.2f}")
+        # ──────────────────────────────────────────────────────────────────────
+
         p_home = float(mu_h**gamma / (mu_h**gamma + mu_a**gamma))
         p_away = float(1 - p_home)
         probs_h = [float(poisson.pmf(k, mu_h)) for k in range(max_r + 1)]

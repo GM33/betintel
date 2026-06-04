@@ -20,7 +20,18 @@ def train_run_model(start_season: int = 2021):
             team_wrc_plus_vs_hand, team_iso_vs_hand, team_obp_vs_hand,
             opp_sp_xfip, opp_sp_fip, opp_sp_k_minus_bb, opp_sp_gb_rate,
             opp_bp_xfip, opp_bp_ip_last_3d,
-            park_runs_factor, temp_f, wind_speed_mph,
+            park_runs_factor, temp_f,
+            -- June 3 upgrade: wind direction interaction features
+            COALESCE(wind_out_speed, 0) AS wind_out_speed,
+            COALESCE(wind_in_speed,  0) AS wind_in_speed,
+            -- June 3 upgrade: SLG variance signals
+            COALESCE(team_slg_last_10,   0) AS team_slg_last_10,
+            COALESCE(team_slg_last_7d,   0) AS team_slg_last_7d,
+            COALESCE(team_slg_variance,  0) AS team_slg_variance,
+            COALESCE(away_slg_delta,     0) AS away_slg_delta,
+            -- June 3 upgrade: ERA regression signals
+            COALESCE(era_xera_gap, 0) AS era_xera_gap,
+            COALESCE(era_fip_gap,  0) AS era_fip_gap,
             start_time_bucket, league
         FROM game_run_data
         WHERE EXTRACT(YEAR FROM date) >= %s
@@ -38,7 +49,6 @@ def train_run_model(start_season: int = 2021):
     feature_cols = [c for c in df.columns if c not in ("game_id", "team_id", "date", "runs_scored")]
 
     X = df[feature_cols].fillna(0)
-    # Coerce any object columns to numeric (strings from Postgres TEXT columns)
     X = X.apply(pd.to_numeric, errors="coerce").fillna(0)
     y = df["runs_scored"]
 
