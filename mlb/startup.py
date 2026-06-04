@@ -16,6 +16,8 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("betintel.startup")
 
+DB_URL = "postgresql://postgres:cgktPPerQvmdJMyAuYcMAxkUsqoniycZ@postgres.railway.internal:5432/railway"
+
 
 def step(label, fn):
     log.info(f"\n{'='*50}\n\u25b6 {label}\n{'='*50}")
@@ -31,8 +33,7 @@ def _schema_already_applied():
     """Return True if the DB already has the model_predictions table."""
     try:
         import psycopg2
-        db_url = os.environ["DATABASE_URL"].strip()
-        conn = psycopg2.connect(db_url)
+        conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
         cur.execute("""
             SELECT EXISTS (
@@ -53,8 +54,7 @@ def _seed_already_done():
     """Return True if historical seed data exists (at least 1 row in game_context)."""
     try:
         import psycopg2
-        db_url = os.environ["DATABASE_URL"].strip()
-        conn = psycopg2.connect(db_url)
+        conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
         cur.execute("SELECT EXISTS (SELECT 1 FROM game_context LIMIT 1)")
         exists = cur.fetchone()[0]
