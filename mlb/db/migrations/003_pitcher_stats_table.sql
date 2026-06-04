@@ -1,15 +1,14 @@
--- Migration 003: pitcher_stats table
--- Creates the pitcher_stats table that stores current-season advanced
--- pitching metrics (ERA, xERA, xFIP, FIP, SwStr%, GB%) for every active SP.
--- Populated daily by mlb/ingestion/pitcher_stats.py.
--- Safe to run multiple times (IF NOT EXISTS / DO NOTHING).
+-- Migration 003: pitcher_stats table (patched)
+-- Handles case where table exists without team_id from a prior failed run.
 
-CREATE TABLE IF NOT EXISTS pitcher_stats (
+-- Drop and recreate cleanly to ensure correct schema
+DROP TABLE IF EXISTS pitcher_stats CASCADE;
+
+CREATE TABLE pitcher_stats (
     pitcher_id      INT         NOT NULL,
     full_name       VARCHAR,
     team_id         INT,
     season          INT         NOT NULL,
-    -- Surface stats (MLB StatsAPI)
     p_era           FLOAT,
     p_ip            FLOAT,
     p_k_per_9       FLOAT,
@@ -17,23 +16,19 @@ CREATE TABLE IF NOT EXISTS pitcher_stats (
     p_hr_per_9      FLOAT,
     p_whip          FLOAT,
     p_gb_rate       FLOAT,
-    -- Advanced regression stats (Baseball Savant)
-    p_xera          FLOAT,      -- xERA: 1:1 translation of xwOBA to ERA scale
-    p_xfip          FLOAT,      -- xFIP: normalises HR/FB rate
-    p_fip           FLOAT,      -- FIP: fielding-independent ERA
-    p_swstr_rate    FLOAT,      -- SwStr%: swinging strike rate
-    p_csw_rate      FLOAT,      -- CSW%: called strike + whiff rate
-    p_k_rate        FLOAT,      -- K%
-    p_bb_rate       FLOAT,      -- BB%
-    -- Computed gap signals (written here for fast lookup)
-    era_xera_gap    FLOAT,      -- p_era - p_xera  (>2.0 = hard fade)
-    era_fip_gap     FLOAT,      -- p_era - p_fip   (>1.2 = secondary flag)
-    -- Meta
+    p_xera          FLOAT,
+    p_xfip          FLOAT,
+    p_fip           FLOAT,
+    p_swstr_rate    FLOAT,
+    p_csw_rate      FLOAT,
+    p_k_rate        FLOAT,
+    p_bb_rate       FLOAT,
+    era_xera_gap    FLOAT,
+    era_fip_gap     FLOAT,
     last_updated    TIMESTAMPTZ DEFAULT NOW(),
     PRIMARY KEY (pitcher_id, season)
 );
 
--- Fast lookup by game-day SP joins
 CREATE INDEX IF NOT EXISTS idx_pitcher_stats_team
     ON pitcher_stats (team_id, season);
 
