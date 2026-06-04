@@ -113,6 +113,8 @@
     .sport-tile.active .sport-tile-label{color:var(--color-primary);}
     .sport-tile-count{position:absolute;top:-5px;right:-5px;background:var(--color-primary);color:var(--color-text-inverse);font-size:9px;font-weight:800;border-radius:var(--radius-full);padding:1px 5px;min-width:16px;text-align:center;display:none;}
     .sport-tile-count.show{display:block;}
+    /* WNBA model badge — shown on WNBA tile when model is active */
+    .sport-tile[data-sport="basketball_wnba"] .sport-tile-label::after{content:' ✦';font-size:7px;opacity:.7;}
 
     #page-body{padding:var(--space-4) var(--space-6) var(--space-6);display:flex;flex-direction:column;gap:var(--space-5);flex:1;}
 
@@ -147,6 +149,9 @@
     .pick-matchup{font-size:var(--text-sm);font-weight:700;color:var(--color-text);}
     .pick-bet{font-size:var(--text-base);font-weight:800;color:var(--color-primary);margin:var(--space-1) 0;}
     .pick-line{font-family:var(--font-mono);font-size:var(--text-xs);color:var(--color-text-muted);}
+    .pick-meta-row{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap;}
+    .pick-meta-item{font-size:10px;color:var(--color-text-faint);font-family:var(--font-mono);}
+    .pick-meta-item strong{color:var(--color-text-muted);}
     .pick-reasoning{font-size:var(--text-xs);color:var(--color-text-muted);line-height:1.6;border-top:1px solid var(--color-divider);padding-top:var(--space-2);}
     .pick-ev{display:flex;align-items:center;gap:var(--space-2);}
     .ev-chip{display:inline-flex;align-items:center;padding:2px 7px;border-radius:var(--radius-full);font-size:10px;font-weight:700;}
@@ -156,6 +161,10 @@
     .signal-dot{width:8px;height:8px;border-radius:var(--radius-full);background:var(--color-border);}
     .signal-dot.lit{background:var(--color-primary);}
     .signal-label{font-size:10px;color:var(--color-text-faint);}
+    .verdict-badge{font-size:10px;font-weight:800;padding:2px 8px;border-radius:var(--radius-full);text-transform:uppercase;letter-spacing:.06em;}
+    .verdict-badge.bet{background:var(--color-success-hl);color:var(--color-success);}
+    .verdict-badge.watch{background:var(--color-primary-hl);color:var(--color-primary);}
+    .verdict-badge.pass{background:var(--color-surface-offset);color:var(--color-text-faint);}
 
     .odds-table-wrap{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-xl);overflow:hidden;box-shadow:var(--shadow-sm);}
     .odds-table{width:100%;border-collapse:collapse;font-size:var(--text-xs);font-variant-numeric:tabular-nums lining-nums;}
@@ -419,7 +428,7 @@
       <div class="empty-state"><div class="empty-state-icon">🎯</div><h3>Parlay Builder</h3><p>Build and optimize parlays from today's picks.</p></div>
     </section>
     <section id="view-tracker" style="display:none">
-      <div class="empty-state"><div class="empty-state-icon">📊</div><h3>Model Tracker</h3><p>NBA model validation dashboard — run /api/nba-resolve to populate.</p></div>
+      <div class="empty-state"><div class="empty-state-icon">📊</div><h3>Model Tracker</h3><p>NBA + WNBA model validation — run /api/nba-resolve or /api/wnba-resolve to populate.</p></div>
     </section>
     <section id="view-settings" style="display:none">
       <div class="empty-state"><div class="empty-state-icon">⚙️</div><h3>Settings</h3><p>Preferences, notifications, and account management.</p></div>
@@ -429,13 +438,18 @@
 
 <script>
 const CONFIG = {
-  RAILWAY_URL:        'https://betintel-production-a550.up.railway.app',
-  HEALTH_PATH:        '/health',
-  ODDS_PATH:          '/api/odds',
-  PICKS_PATH:         '/api/nba-picks',
-  ARB_PATH:           '/api/arb',
-  POLL_INTERVAL_MS:   30000,
-  FETCH_TIMEOUT_MS:   10000,
+  RAILWAY_URL:       'https://betintel-production-a550.up.railway.app',
+  HEALTH_PATH:       '/health',
+  ODDS_PATH:         '/api/odds',
+  ARB_PATH:          '/api/arb',
+  POLL_INTERVAL_MS:  30000,
+  FETCH_TIMEOUT_MS:  10000,
+  // Per-sport picks endpoints — only sports with a model get a dedicated endpoint.
+  // All others fall back to undefined (picks section shows empty state gracefully).
+  PICKS_ENDPOINTS: {
+    basketball_nba:  '/api/nba-picks',
+    basketball_wnba: '/api/wnba-picks',
+  },
 };
 
 const SPORT_META = {
@@ -449,7 +463,7 @@ const SPORT_META = {
 
 let currentSport = 'all';
 let allGamesCache = [];
-let allPicksCache = [];
+let allPicksCache = [];   // merged picks from all fetched endpoints
 let allArbCache   = [];
 let currentView   = 'dashboard';
 let backendOnline = false;
@@ -477,10 +491,40 @@ function validateGame(g) {
 }
 function filterBySport(items, sport) {
   if (!sport || sport === 'all') return items;
-  return items.filter(i => (i.sport_key || i.sportKey || '') === sport);
+  return items.filter(i => (i.sport_key || i.sportKey || i.sport || '') === sport);
 }
 function todayLabel() {
   return new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
+}
+// Normalise a raw pick from any endpoint into the internal pick shape
+function normalisePick(p, sportKey) {
+  // New-style picks from /api/nba-picks and /api/wnba-picks:
+  // { game, commenceTime, market, marketKey, selection, line, priceAtEval,
+  //   modelProb, modelEdge, confidence, lineDelta, isHighMove, verdict }
+  const confidence = (p.confidence || p.tier || 'LOW').toUpperCase();
+  const tier        = confidence === 'HIGH' ? 'high' : confidence === 'MED' ? 'med' : 'low';
+  const edgeStr     = p.modelEdge || '';
+  const edgeNum     = edgeStr ? parseFloat(edgeStr) : null;
+  return {
+    sport:      sportKey,
+    sport_key:  sportKey,
+    sportLabel: (SPORT_META[sportKey] || {}).label || sportKey,
+    matchup:    p.game || p.matchup || '',
+    bet:        p.selection  || p.bet  || '',
+    market:     p.market     || '',
+    line:       p.line != null ? p.line : (p.priceAtEval || ''),
+    priceAtEval: p.priceAtEval || null,
+    modelProb:  p.modelProb  || null,
+    modelEdge:  p.modelEdge  || null,
+    ev:         edgeNum,
+    tier,
+    confidence,
+    verdict:    p.verdict    || tier.toUpperCase(),
+    lineDelta:  p.lineDelta  || null,
+    isHighMove: p.isHighMove || false,
+    signals:    (p.isHighMove ? 1 : 0) + (edgeNum && Math.abs(edgeNum) > 0.04 ? 2 : edgeNum && Math.abs(edgeNum) > 0.025 ? 1 : 0),
+    reasoning:  p.reasoning  || null,
+  };
 }
 
 // ─── THEME ─────────────────────────────────────────────────────────────────
@@ -539,7 +583,6 @@ async function pollHealth() {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     hideOffline();
-    // If pipeline is still warming up, show a loading state instead of offline
     if (data.pipeline_ready === false) {
       document.getElementById('hero-sub').textContent = 'Data pipeline warming up — picks will appear shortly...';
     }
@@ -567,19 +610,60 @@ async function fetchOdds(sport) {
 }
 
 // ─── PICKS FETCH ─────────────────────────────────────────────────────────────
+// Fetches from all model endpoints (NBA + WNBA) and merges into allPicksCache.
+// When a specific sport is active, only fetches that sport's endpoint.
 async function fetchPicks(sport) {
-  const url = CONFIG.RAILWAY_URL + CONFIG.PICKS_PATH + (sport && sport !== 'all' ? '?sport=' + sport : '');
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(CONFIG.FETCH_TIMEOUT_MS) });
-    if (!res.ok) return;
-    const data = await res.json();
-    allPicksCache = Array.isArray(data) ? data : (data.picks || []);
+  const endpoints = CONFIG.PICKS_ENDPOINTS;
+
+  // Determine which endpoints to call
+  let toFetch = [];
+  if (sport && sport !== 'all' && endpoints[sport]) {
+    toFetch = [{ sport, path: endpoints[sport] }];
+  } else if (!sport || sport === 'all') {
+    toFetch = Object.entries(endpoints).map(([s, p]) => ({ sport: s, path: p }));
+  }
+  // Sports without a model endpoint: no picks to fetch — show empty state
+
+  if (!toFetch.length) {
+    allPicksCache = [];
     renderPicksGrid('picks-grid', sport, 'picks-meta');
     renderPicksGrid('sharp-picks-grid', sport, 'sharp-meta');
+    document.getElementById('kpi-picks').textContent  = '0';
+    document.getElementById('hero-picks').textContent = '0';
+    return;
+  }
+
+  try {
+    const results = await Promise.allSettled(
+      toFetch.map(({ sport: s, path }) =>
+        fetch(CONFIG.RAILWAY_URL + path + '?log=false', { signal: AbortSignal.timeout(CONFIG.FETCH_TIMEOUT_MS) })
+          .then(r => r.ok ? r.json() : null)
+          .then(data => {
+            if (!data) return [];
+            const raw = Array.isArray(data) ? data : (data.picks || []);
+            return raw.map(p => normalisePick(p, s));
+          })
+      )
+    );
+
+    // Merge all fulfilled results
+    allPicksCache = results
+      .filter(r => r.status === 'fulfilled')
+      .flatMap(r => r.value || [])
+      .filter(p => p.tier !== 'low'); // surface HIGH + MED only in grids
+
+    // Sort by edge magnitude desc
+    allPicksCache.sort((a, b) => Math.abs(b.ev || 0) - Math.abs(a.ev || 0));
+
+    renderPicksGrid('picks-grid', sport, 'picks-meta');
+    renderPicksGrid('sharp-picks-grid', sport, 'sharp-meta');
+
+    const highCount = allPicksCache.filter(p => p.tier === 'high').length;
     const badge = document.getElementById('badge-picks');
     if (allPicksCache.length) { badge.textContent = allPicksCache.length; badge.style.display = ''; }
-    document.getElementById('kpi-picks').textContent  = allPicksCache.length || '0';
-    document.getElementById('hero-picks').textContent = allPicksCache.length || '0';
+    else { badge.style.display = 'none'; }
+    document.getElementById('kpi-picks').textContent  = highCount || allPicksCache.length || '0';
+    document.getElementById('hero-picks').textContent = highCount || allPicksCache.length || '0';
   } catch(e) { /* picks are best-effort */ }
 }
 
@@ -604,7 +688,7 @@ function renderAll(games, sport) {
   const filtered = filterBySport(games, sport);
   renderOddsTable(filtered);
   updateSportCounts(games);
-  updateHeroSub(games);
+  updateHeroSub(games, sport);
   buildTicker(filtered);
   document.getElementById('kpi-games').textContent  = games.length;
   document.getElementById('hero-games').textContent = games.length;
@@ -613,12 +697,18 @@ function renderAll(games, sport) {
   document.getElementById('kpi-fresh-delta').textContent = 'Live — validated';
 }
 
-function updateHeroSub(games) {
-  const sports = [...new Set(games.map(g => g.sport_key || ''))].filter(Boolean);
-  const labels = sports.map(k => (SPORT_META[k] || {}).label || k).filter(Boolean);
+function updateHeroSub(games, sport) {
+  const relevant = filterBySport(games, sport);
+  const sportMeta = sport && sport !== 'all' ? SPORT_META[sport] : null;
+  const eyebrow = document.getElementById('hero-eyebrow');
+  if (sportMeta) {
+    eyebrow.textContent = sportMeta.icon + ' ' + sportMeta.label + ' · Today\'s Slate';
+  } else {
+    eyebrow.textContent = '⚡ Today\'s Slate';
+  }
   document.getElementById('hero-sub').textContent =
-    games.length
-      ? games.length + ' validated games today across ' + (labels.join(', ') || 'all sports') + '.'
+    relevant.length
+      ? relevant.length + ' game' + (relevant.length !== 1 ? 's' : '') + ' today' + (sportMeta ? ' · ' + sportMeta.label + ' model active' : ' across all sports') + '.'
       : 'No games scheduled for today.';
 }
 
@@ -708,27 +798,44 @@ function renderPicksGrid(gridId, sport, metaId) {
   const grid = document.getElementById(gridId);
   const meta = document.getElementById(metaId);
   const picks = filterBySport(allPicksCache, sport);
+
+  // Sport has no model endpoint — show a clear message instead of generic "no picks"
+  const hasModel = !sport || sport === 'all' || !!CONFIG.PICKS_ENDPOINTS[sport];
   if (!picks.length) {
-    grid.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🔍</div><h3>No picks yet</h3><p>Sharp picks will appear here once today\'s validated games are loaded.</p></div>';
-    if (meta) meta.textContent = backendOnline ? '0 picks for today' : 'Offline';
+    const msg = !hasModel
+      ? `<div class="empty-state"><div class="empty-state-icon">${(SPORT_META[sport] || {}).icon || '📊'}</div><h3>No model for ${(SPORT_META[sport] || {}).label || sport}</h3><p>The BetIntel model currently covers NBA and WNBA. More sports coming soon.</p></div>`
+      : '<div class="empty-state"><div class="empty-state-icon">🔍</div><h3>No picks yet</h3><p>Sharp picks will appear here once today\'s validated games are loaded.</p></div>';
+    grid.innerHTML = msg;
+    if (meta) meta.textContent = backendOnline ? (hasModel ? '0 picks for today' : 'Model not yet available') : 'Offline';
     return;
   }
   if (meta) meta.textContent = picks.length + ' picks · ' + new Date().toLocaleTimeString();
+
   grid.innerHTML = picks.map((p, i) => {
-    const tier = p.tier || 'med';
-    const ev   = p.ev != null ? parseFloat(p.ev) : null;
-    const evHtml = ev != null ? `<span class="ev-chip ${ev > 0 ? 'pos' : 'neg'}">${ev > 0 ? '+' : ''}${ev.toFixed(1)}% EV</span>` : '';
-    const sigs = Math.min(p.signals || 0, 5);
-    const dotsHtml = Array.from({length:5}, (_,j) => `<span class="signal-dot${j < sigs ? ' lit' : ''}"></span>`).join('');
+    const tier        = p.tier || 'med';
+    const ev          = p.ev != null ? p.ev : null;
+    const evHtml      = ev != null ? `<span class="ev-chip ${ev > 0 ? 'pos' : 'neg'}">${ev > 0 ? '+' : ''}${ev.toFixed(2)}%</span>` : '';
+    const sigs        = Math.min(p.signals || 0, 5);
+    const dotsHtml    = Array.from({length:5}, (_,j) => `<span class="signal-dot${j < sigs ? ' lit' : ''}"></span>`).join('');
+    const verdictCls  = (p.verdict || 'PASS').toLowerCase();
+    const moveHtml    = p.isHighMove ? '<span class="ev-chip pos">📈 Sharp Move</span>' : '';
+
     return `<div class="pick-card tier-${tier} animate-in" style="animation-delay:${i*40}ms">
       <div class="pick-header">
-        <span class="pick-tier ${tier}">${tier}</span>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <span class="pick-tier ${tier}">${p.confidence || tier.toUpperCase()}</span>
+          <span class="verdict-badge ${verdictCls}">${p.verdict || tier.toUpperCase()}</span>
+        </div>
         <span class="pick-sport-chip">${p.sportLabel || ''}</span>
       </div>
       <div class="pick-matchup">${p.matchup || ''}</div>
       <div class="pick-bet">${p.bet || ''}</div>
-      <div class="pick-line">${p.line ? 'Line: ' + p.line : ''}</div>
-      <div class="pick-ev">${evHtml}<div class="pick-signal-bar">${dotsHtml}<span class="signal-label">${sigs}/5 signals</span></div></div>
+      <div class="pick-meta-row">
+        ${p.market ? `<span class="pick-meta-item"><strong>MKT</strong> ${p.market}</span>` : ''}
+        ${p.line   ? `<span class="pick-meta-item"><strong>LINE</strong> ${p.line}</span>` : ''}
+        ${p.modelProb ? `<span class="pick-meta-item"><strong>MODEL</strong> ${p.modelProb}</span>` : ''}
+      </div>
+      <div class="pick-ev">${evHtml}${moveHtml}<div class="pick-signal-bar">${dotsHtml}<span class="signal-label">${sigs}/5 signals</span></div></div>
       ${p.reasoning ? `<div class="pick-reasoning">${p.reasoning}</div>` : ''}
     </div>`;
   }).join('');
@@ -792,17 +899,31 @@ function bindFilter(barId, cb) {
   );
 }
 bindFilter('sport-filter', sport => { currentSport = sport; renderOddsTable(filterBySport(allGamesCache, sport)); });
-bindFilter('picks-sport-filter', sport => renderPicksGrid('picks-grid', sport, 'picks-meta'));
-bindFilter('sharp-sport-filter', sport => renderPicksGrid('sharp-picks-grid', sport, 'sharp-meta'));
+bindFilter('picks-sport-filter', async sport => {
+  currentSport = sport;
+  await fetchPicks(sport);
+  renderPicksGrid('picks-grid', sport, 'picks-meta');
+});
+bindFilter('sharp-sport-filter', async sport => {
+  currentSport = sport;
+  await fetchPicks(sport);
+  renderPicksGrid('sharp-picks-grid', sport, 'sharp-meta');
+});
 bindFilter('arb-sport-filter', sport => renderArbGrid(sport));
 
 // ─── SPORT TILES ─────────────────────────────────────────────────────────────
 document.querySelectorAll('.sport-tile[data-sport]').forEach(tile =>
-  tile.addEventListener('click', () => {
+  tile.addEventListener('click', async () => {
     document.querySelectorAll('.sport-tile').forEach(t => t.classList.remove('active'));
     tile.classList.add('active');
     currentSport = tile.dataset.sport;
+    // Sync filter chips to match tile
+    document.querySelectorAll('.filter-chip[data-sport]').forEach(c => {
+      c.classList.toggle('active', c.dataset.sport === currentSport);
+    });
     renderOddsTable(filterBySport(allGamesCache, currentSport));
+    updateHeroSub(allGamesCache, currentSport);
+    await fetchPicks(currentSport);
   })
 );
 
