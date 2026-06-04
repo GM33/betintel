@@ -11,13 +11,14 @@ const ALLOWED_SPORTS = new Set(
 );
 
 const ALLOWED_MARKETS = new Set(
-  (process.env.BETINTEL_ALLOWED_MARKETS || 'h2h,spreads,totals')
+  (process.env.BETINTEL_ALLOWED_MARKETS || 'h2h,spreads,totals,player_points,player_rebounds,player_assists,player_threes,player_blocks,player_steals,player_turnovers')
     .split(',')
     .map((m) => m.trim())
     .filter(Boolean)
 );
 
-const DEFAULT_TIMEOUT_MS = Number(process.env.ODDS_API_TIMEOUT_MS || 2500);
+// Raised from 2500ms — NBA Finals responses are large (many bookmakers + prop markets)
+const DEFAULT_TIMEOUT_MS = Number(process.env.ODDS_API_TIMEOUT_MS || 6000);
 
 // ---- Rate-limit state (in-process; use Redis for multi-instance) ----
 const rateLimitState = {
