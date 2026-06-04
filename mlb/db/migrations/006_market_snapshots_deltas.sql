@@ -1,6 +1,8 @@
 -- Migration 006: market_snapshots + market_snapshots_deltas
 -- Rank 5: line movement snapshot tables
 
+CREATE SCHEMA IF NOT EXISTS mlb;
+
 CREATE TABLE IF NOT EXISTS mlb.market_snapshots (
     id              BIGSERIAL PRIMARY KEY,
     game_id         TEXT NOT NULL,
@@ -16,7 +18,6 @@ CREATE TABLE IF NOT EXISTS mlb.market_snapshots (
 CREATE INDEX IF NOT EXISTS idx_market_snapshots_game
     ON mlb.market_snapshots (game_id, market_type, snapped_at DESC);
 
--- Materialized/computed view: open vs current delta per outcome
 CREATE TABLE IF NOT EXISTS mlb.market_snapshots_deltas (
     id              BIGSERIAL PRIMARY KEY,
     game_id         TEXT NOT NULL,
@@ -25,10 +26,10 @@ CREATE TABLE IF NOT EXISTS mlb.market_snapshots_deltas (
     bookmaker       TEXT NOT NULL,
     open_line       NUMERIC,
     current_line    NUMERIC,
-    delta_pct       NUMERIC,   -- (current_line - open_line) / ABS(open_line)
+    delta_pct       NUMERIC,
     open_prob       NUMERIC,
     current_prob    NUMERIC,
-    prob_delta      NUMERIC,   -- current_prob - open_prob
+    prob_delta      NUMERIC,
     snapped_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
