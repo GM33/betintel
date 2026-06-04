@@ -38,6 +38,8 @@ def train_k_model(start_season: int = 2021):
     feature_cols = [c for c in df.columns if c not in ("game_id", "date", "pitcher_id", "k_outs")]
 
     X = df[feature_cols].fillna(0)
+    # Coerce any object columns to numeric (strings from Postgres TEXT columns)
+    X = X.apply(pd.to_numeric, errors="coerce").fillna(0)
     y = df["k_outs"]
 
     X_train, X_valid, y_train, y_valid = train_test_split(X, y, test_size=0.2, random_state=42)
