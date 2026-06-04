@@ -1,7 +1,7 @@
 {
   "env": {
-    "TENNIS_SPORT_KEY": "tennis_atp_french_open",
-    "TENNIS_SPORT_KEY_NOTES": "Roland Garros active May17-Jun7. Next: tennis_atp_wimbledon (Jun21-Jul12). Grass swing: tennis_atp_stuttgart (Jun6-14), tennis_atp_queens (Jun13-21). General ATP fallback: tennis_atp"
+    "TENNIS_SPORT_KEY": "tennis_atp",
+    "TENNIS_SPORT_KEY_NOTES": "Using general ATP fallback. Tournament-specific keys: tennis_atp_wimbledon (Jun21-Jul12), tennis_atp_stuttgart (Jun6-14), tennis_atp_queens (Jun13-21). Update TENNIS_SPORT_KEY in Railway + Vercel env when a specific tournament is active."
   },
   "rewrites": [
     { "source": "/", "destination": "/index.html" }
@@ -10,6 +10,14 @@
     "api/index.js": {
       "memory": 128,
       "maxDuration": 5
+    },
+    "api/news.js": {
+      "memory": 256,
+      "maxDuration": 15
+    },
+    "api/parlay-edge.js": {
+      "memory": 512,
+      "maxDuration": 30
     },
     "api/webhook.js": {
       "memory": 256,
@@ -48,6 +56,10 @@
       "maxDuration": 30
     },
     "api/arb.js": {
+      "memory": 256,
+      "maxDuration": 15
+    },
+    "api/clv.js": {
       "memory": 256,
       "maxDuration": 15
     },

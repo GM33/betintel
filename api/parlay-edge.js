@@ -1,6 +1,13 @@
 // api/parlay-edge.js
 // BetIntel — Parlay Edge + Correlation Matrix endpoint
 //
+// Changes from audit:
+//   - Matrix mode now cached in Redis (TTL 10min) + in-mem fallback (TTL 5min)
+//     Matrix computation is O(n²) Pearson over 20 players × 15 games — no-store
+//     on every request was expensive.
+//   - Two-prop simulation mode remains no-store (params vary per request).
+//   - POST mode remains no-store.
+//
 // GET /api/parlay-edge
 //   Two-prop joint probability mode (requires prop_a, prop_b query params)
 //
@@ -35,7 +42,43 @@ const {
   pearsonR,
 } = require('./_lib/correlation-engine');
 
-// ── Embedded roster snapshots (last 15 games as of June 3, 2026)
+// ── Redis + in-mem cache for matrix mode ───────────────────────────────
+let redis = null;
+try { redis = require('./_lib/redis-client'); } catch {}
+
+const MATRIX_CACHE_KEY = 'betintel:parlay:matrix';
+const MATRIX_TTL_S     = 600;   // 10 min Redis TTL
+const MEM_TTL_MS       = 300_000; // 5 min in-mem TTL
+let   memMatrixCache   = null;
+let   memMatrixTs      = 0;
+
+async function getMatrixCached() {
+  // 1. In-mem
+  if (memMatrixCache && Date.now() - memMatrixTs < MEM_TTL_MS) {
+    return { data: memMatrixCache, source: 'mem' };
+  }
+  // 2. Redis
+  if (redis) {
+    try {
+      const raw = await redis.get(MATRIX_CACHE_KEY);
+      if (raw) {
+        const data = JSON.parse(raw);
+        memMatrixCache = data; memMatrixTs = Date.now();
+        return { data, source: 'redis' };
+      }
+    } catch {}
+  }
+  return null;
+}
+
+async function setMatrixCached(data) {
+  memMatrixCache = data; memMatrixTs = Date.now();
+  if (redis) {
+    try { await redis.setex(MATRIX_CACHE_KEY, MATRIX_TTL_S, JSON.stringify(data)); } catch {}
+  }
+}
+
+// ── Embedded roster snapshots (last 15 games as of June 3, 2026) ──────────
 // Replace individual arrays with live Redis lookups from nba-cron when available.
 // Key: nba-cron writes to Redis at betintel:nba:player:{slug}:reb / :ast
 const ROSTER_SNAPSHOT = {
@@ -85,43 +128,34 @@ function groupByTeam() {
   return teams;
 }
 
-// ── Matrix mode ──────────────────────────────────────────────────────────────
+// ── Matrix mode ───────────────────────────────────────────────────
 function buildMatrixResponse() {
   const byTeam = groupByTeam();
   const result = {};
   for (const [team, roster] of Object.entries(byTeam)) {
     const rebMatrix = buildTeamCorrelationMatrix(roster, 'reb');
     const astMatrix = buildTeamCorrelationMatrix(roster, 'ast');
-    // Build usage displacement ranking (all flagged pairs, both stats)
     const allFlagged = [
-      ...rebMatrix.flaggedPairs.map(p => ({
-        ...p,
-        team,
-        usageDisplacement: computeUsageDisplacement(p.r, false, 1.0),
-      })),
-      ...astMatrix.flaggedPairs.map(p => ({
-        ...p,
-        team,
-        usageDisplacement: computeUsageDisplacement(p.r, false, 1.0),
-      })),
+      ...rebMatrix.flaggedPairs.map(p => ({ ...p, team, usageDisplacement: computeUsageDisplacement(p.r, false, 1.0) })),
+      ...astMatrix.flaggedPairs.map(p => ({ ...p, team, usageDisplacement: computeUsageDisplacement(p.r, false, 1.0) })),
     ].sort((a, b) => b.usageDisplacement - a.usageDisplacement);
 
     result[team] = {
-      rebounds:  { players: rebMatrix.players, matrix: rebMatrix.matrix, flaggedPairs: rebMatrix.flaggedPairs },
-      assists:   { players: astMatrix.players, matrix: astMatrix.matrix, flaggedPairs: astMatrix.flaggedPairs },
+      rebounds:      { players: rebMatrix.players, matrix: rebMatrix.matrix, flaggedPairs: rebMatrix.flaggedPairs },
+      assists:       { players: astMatrix.players, matrix: astMatrix.matrix, flaggedPairs: astMatrix.flaggedPairs },
       parlayRankings: allFlagged,
     };
   }
   return result;
 }
 
-// ── Handler ──────────────────────────────────────────────────────────────────
+// ── Handler ────────────────────────────────────────────────────────────────
 module.exports = async function handler(req, res) {
-  res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Access-Control-Allow-Origin', '*');
 
-  // ── POST: raw history arrays ──
+  // ── POST: raw history arrays (no-store, params unique per request) ──
   if (req.method === 'POST') {
+    res.setHeader('Cache-Control', 'no-store');
     let body = req.body;
     if (typeof body === 'string') { try { body = JSON.parse(body); } catch { body = {}; } }
     const {
@@ -160,16 +194,37 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // ── GET matrix mode ──
+  // ── GET matrix mode — CACHED ──
   if (req.query.mode === 'matrix') {
+    const cached = await getMatrixCached();
+    if (cached) {
+      res.setHeader('Cache-Control', `public, max-age=${MATRIX_TTL_S}`);
+      res.setHeader('X-Cache', cached.source === 'mem' ? 'MEM-HIT' : 'REDIS-HIT');
+      return res.status(200).json({
+        mode: 'matrix',
+        generatedAt: cached.data._generatedAt,
+        cacheSource: cached.source,
+        teams: cached.data.teams,
+      });
+    }
+
+    const teams = buildMatrixResponse();
+    const payload = { teams, _generatedAt: new Date().toISOString() };
+    await setMatrixCached(payload);
+
+    res.setHeader('Cache-Control', `public, max-age=${MATRIX_TTL_S}`);
+    res.setHeader('X-Cache', 'MISS');
     return res.status(200).json({
       mode: 'matrix',
-      generatedAt: new Date().toISOString(),
-      teams: buildMatrixResponse(),
+      generatedAt: payload._generatedAt,
+      cacheSource: 'none',
+      teams,
     });
   }
 
-  // ── GET two-prop simulation mode ──
+  // ── GET two-prop simulation mode (no-store, unique per param combo) ──
+  res.setHeader('Cache-Control', 'no-store');
+
   const { prop_a, prop_b, stat_a = 'reb', stat_b = 'reb',
           line_a, line_b, dir_a = 'over', dir_b = 'over',
           team_a, team_b, n = '40000' } = req.query;
@@ -199,7 +254,7 @@ module.exports = async function handler(req, res) {
   const histB = playerB[stat_b];
   const muA   = histA.reduce((a, b) => a + b, 0) / histA.length;
   const muB   = histB.reduce((a, b) => a + b, 0) / histB.length;
-  const la    = line_a != null ? Number(line_a) : +(muA - 0.5).toFixed(1); // default -0.5 from mean
+  const la    = line_a != null ? Number(line_a) : +(muA - 0.5).toFixed(1);
   const lb    = line_b != null ? Number(line_b) : +(muB - 0.5).toFixed(1);
 
   const simN  = Math.min(Number(n) || 40000, 100000);
@@ -217,7 +272,7 @@ module.exports = async function handler(req, res) {
   });
 };
 
-// ── Human-readable interpretation ─────────────────────────────────────────────
+// ── Human-readable interpretation ────────────────────────────────────────────────
 function interpret(sim) {
   const { r, edgePct, pJoint, pIndep } = sim;
   let verdict, detail;
