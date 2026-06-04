@@ -20,6 +20,7 @@ DB_URL = "postgresql://postgres:cgktPPerQvmdJMyAuYcMAxkUsqoniycZ@postgres.railwa
 
 
 def step(label, fn):
+    """Fatal step — raises on failure, stopping the pipeline."""
     log.info(f"\n{'='*50}\n\u25b6 {label}\n{'='*50}")
     try:
         fn()
@@ -27,6 +28,16 @@ def step(label, fn):
     except Exception as e:
         log.error(f"\u274c {label} failed: {e}")
         raise
+
+
+def soft_step(label, fn):
+    """Non-fatal step — logs failure but allows pipeline to continue."""
+    log.info(f"\n{'='*50}\n\u25b6 {label}\n{'='*50}")
+    try:
+        fn()
+        log.info(f"\u2705 {label} complete")
+    except Exception as e:
+        log.warning(f"\u26a0\ufe0f  {label} skipped (non-fatal): {e}")
 
 
 def _schema_already_applied():
@@ -81,7 +92,7 @@ def run():
     from mlb.models.compute_edges import compute_k_edges, compute_run_edges
     from mlb.analyst.analyst_agent import run_analyst_agent_for_today
 
-    # ── Idempotent steps ───────────────────────────────────────
+    # ── Idempotent steps ──────────────────────────────────────────────
     if _schema_already_applied():
         log.info("\u23e9 1/10 Schema already applied — skipping migration")
     else:
@@ -92,14 +103,18 @@ def run():
     else:
         step("2/10 Seed historical data (2022-2025)", seed_all)
 
-    # ── Always re-run on deploy ──────────────────────────────────
+    # ── Core model steps (fatal) ───────────────────────────────────────
     step("3/10 Train K strikeout model", train_k_model)
     step("4/10 Train run expectancy model", train_run_model)
     step("5/10 Fetch today's schedule", fetch_schedule)
     step("6/10 Fetch bullpen usage", fetch_bullpen_usage)
-    step("7/10 Fetch odds", lambda: fetch_odds("pre_game"))
-    step("8/10 Fetch K props", fetch_player_props)
-    step("9/10 Fetch weather + lineups", lambda: [fetch_weather_for_today(), fetch_lineups()])
+
+    # ── External API steps (non-fatal) ───────────────────────────────
+    soft_step("7/10 Fetch odds", lambda: fetch_odds("pre_game"))
+    soft_step("8/10 Fetch K props", fetch_player_props)
+    soft_step("9/10 Fetch weather + lineups", lambda: [fetch_weather_for_today(), fetch_lineups()])
+
+    # ── Prediction + output (fatal) ──────────────────────────────────
     step("10/10 Predict + compute edges + analyst", lambda: [
         predict_k_for_today(),
         predict_runs_for_today(),
