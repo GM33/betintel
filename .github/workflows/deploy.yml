@@ -1,7 +1,11 @@
 name: BetIntel Deploy Pipeline
+
 on:
   push:
     branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
   detect-changes:
@@ -9,10 +13,14 @@ jobs:
     outputs:
       frontend: ${{ steps.filter.outputs.frontend }}
       workers: ${{ steps.filter.outputs.workers }}
+
     steps:
-      - uses: actions/checkout@REAL_40_CHAR_SHA
-      - uses: dorny/paths-filter@REAL_40_CHAR_SHA
+      - name: Checkout
+        uses: actions/checkout@REPLACE_WITH_REAL_40_CHAR_SHA
+
+      - name: Detect changed paths
         id: filter
+        uses: dorny/paths-filter@REPLACE_WITH_REAL_40_CHAR_SHA
         with:
           filters: |
             frontend:
@@ -35,12 +43,16 @@ jobs:
     needs: detect-changes
     if: needs.detect-changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@REAL_40_CHAR_SHA
+      - name: Checkout
+        uses: actions/checkout@REPLACE_WITH_REAL_40_CHAR_SHA
+
       - name: Setup Node
-        uses: actions/setup-node@REAL_40_CHAR_SHA
+        uses: actions/setup-node@REPLACE_WITH_REAL_40_CHAR_SHA
         with:
           node-version: 20
+
       - name: Deploy to Vercel
         run: npx vercel --prod --token=${{ secrets.VERCEL_TOKEN }} --yes
         env:
@@ -52,12 +64,16 @@ jobs:
     needs: detect-changes
     if: needs.detect-changes.outputs.workers == 'true'
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@REAL_40_CHAR_SHA
+      - name: Checkout
+        uses: actions/checkout@REPLACE_WITH_REAL_40_CHAR_SHA
+
       - name: Setup Node for Railway CLI
-        uses: actions/setup-node@REAL_40_CHAR_SHA
+        uses: actions/setup-node@REPLACE_WITH_REAL_40_CHAR_SHA
         with:
           node-version: 20
+
       - name: Deploy to Railway
         run: npx @railway/cli up --service betintel-workers --detach
         env:
