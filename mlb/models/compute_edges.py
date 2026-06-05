@@ -15,9 +15,15 @@ BP_CRITICAL_MULT = 1.12
 BP_ELEVATED_MULT = 1.06
 
 # ── June 5 recalibration: confidence floor & favorite cliff ──────────────────
-CONFIDENCE_FLOOR       = 0.60   # picks below this are suppressed from card output
-FAVORITE_CLIFF_ODDS    = -180   # chalk plays beyond this REQUIRE a secondary signal
-MOMENTUM_WEIGHT        = 0.12   # weight applied to last-5 run-diff delta on model_mean
+CONFIDENCE_FLOOR       = 0.60
+FAVORITE_CLIFF_ODDS    = -180
+MOMENTUM_WEIGHT        = 0.12
+
+# ── June 3 post-mortem constants ─────────────────────────────────────────────
+K_PROP_WIN_PROB_GATE   = 0.65   # K-over props require team win prob >= this
+HIGH_VARIANCE_BAND     = 0.50   # total within this many runs of line = HIGH_VARIANCE
+ROAD_BLOWOUT_THRESHOLD = 5.0    # road last-5 run-diff >= this triggers +15% boost
+ROAD_BLOWOUT_BOOST     = 0.15
 
 def get_db():
     return psycopg2.connect(DATABASE_URL)
@@ -36,7 +42,6 @@ def kelly_stake(p_model, odds_american):
     return round(min(max(f * KELLY_FRACTION, 0), MAX_STAKE_PCT), 4)
 
 def _fetch_bp_fatigue(cur, team_id, date_str):
-    """Returns bp_ip_last_3d for a team on a given date, or 0.0 if not found."""
     cur.execute("""
         SELECT bp_ip_last_3d FROM bullpen_stats
         WHERE team_id=%s AND date=%s
@@ -45,11 +50,6 @@ def _fetch_bp_fatigue(cur, team_id, date_str):
     return float(row[0]) if row and row[0] else 0.0
 
 def _fetch_momentum_delta(cur, team_id, date_str):
-    """
-    Returns the last-5-game run differential for a team.
-    Positive = team outscoring opponents; negative = being outscored.
-    Used to apply MOMENTUM_WEIGHT adjustment to model_mean.
-    """
     cur.execute("""
         SELECT AVG(run_diff_last5) FROM team_momentum
         WHERE team_id=%s AND date<=%s
@@ -58,11 +58,38 @@ def _fetch_momentum_delta(cur, team_id, date_str):
     row = cur.fetchone()
     return float(row[0]) if row and row[0] is not None else 0.0
 
+def _fetch_road_momentum(cur, team_id, date_str):
+    """
+    Returns the last-5 road-only run differential for a team.
+    Used by the road blowout defense rule (June 3 post-mortem).
+    """
+    cur.execute("""
+        SELECT AVG(road_run_diff_last5) FROM team_momentum
+        WHERE team_id=%s AND date<=%s
+        ORDER BY date DESC LIMIT 1
+    """, (team_id, date_str))
+    row = cur.fetchone()
+    return float(row[0]) if row and row[0] is not None else 0.0
+
+def _fetch_team_win_prob(cur, game_id, team_id):
+    """
+    Fetches the pre-game model win probability for a specific team in a game.
+    Used by K-prop win-prob gate to block overs when team is projected to lose.
+    """
+    cur.execute("""
+        SELECT p_home, p_away, gc.home_team_id
+        FROM model_predictions mp
+        JOIN game_context gc ON mp.game_id = gc.game_id
+        WHERE mp.game_id=%s AND mp.market_type='game'
+        ORDER BY mp.created_at DESC LIMIT 1
+    """, (game_id,))
+    row = cur.fetchone()
+    if not row:
+        return None
+    p_home, p_away, home_team_id = row
+    return float(p_home) if team_id == home_team_id else float(p_away)
+
 def _is_trap_game(cur, game_id):
-    """
-    Returns True if the game has been flagged as a trap in game_context.
-    Trap-flagged games are SUPPRESSED from card output entirely (June 5 rule).
-    """
     cur.execute("""
         SELECT is_trap FROM game_context WHERE game_id=%s
     """, (game_id,))
@@ -70,11 +97,6 @@ def _is_trap_game(cur, game_id):
     return bool(row[0]) if row and row[0] is not None else False
 
 def _has_secondary_signal(cur, game_id, side):
-    """
-    For chalk favorites beyond FAVORITE_CLIFF_ODDS, verifies at least one
-    secondary sharp signal exists: line movement, sharp money %, or SP FIP edge.
-    Returns True if a qualifying signal is found.
-    """
     cur.execute("""
         SELECT line_moved_sharp, sharp_money_pct, sp_fip_edge
         FROM sharp_signals
@@ -92,13 +114,15 @@ def compute_k_edges():
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
         SELECT mp.id, mp.game_id, mp.player_id, mp.model_mean,
-               ms.line, ms.over_odds, ms.under_odds, ms.player_name
+               ms.line, ms.over_odds, ms.under_odds, ms.player_name,
+               gc.home_team_id, gc.away_team_id
         FROM model_predictions mp
         JOIN market_snapshots ms
           ON mp.game_id = ms.game_id
          AND mp.player_id = ms.player_id
          AND ms.market_type = 'player_prop'
          AND ms.prop_type = 'k_strikeouts'
+        JOIN game_context gc ON mp.game_id = gc.game_id
         WHERE mp.market_type = 'player_prop'
           AND mp.p_over IS NULL
           AND DATE(mp.created_at) = CURRENT_DATE
@@ -107,25 +131,37 @@ def compute_k_edges():
     update_cur = conn.cursor()
 
     for row in rows:
-        lam = row["model_mean"]
+        lam  = row["model_mean"]
         line = row["line"]
         if not lam or not line:
             continue
-        p_over = float(1 - poisson.cdf(int(line), lam))
+
+        p_over  = float(1 - poisson.cdf(int(line), lam))
         p_under = float(poisson.cdf(int(line), lam))
-        p_imp_over = implied_prob_american(row["over_odds"])
+        p_imp_over  = implied_prob_american(row["over_odds"])
         p_imp_under = implied_prob_american(row["under_odds"])
-        edge_over = round(p_over - p_imp_over, 4) if p_imp_over else None
+        edge_over  = round(p_over  - p_imp_over,  4) if p_imp_over  else None
         edge_under = round(p_under - p_imp_under, 4) if p_imp_under else None
-        edges = [e for e in [edge_over, edge_under] if e is not None]
+        edges     = [e for e in [edge_over, edge_under] if e is not None]
         best_edge = max(edges) if edges else None
+        best_conf = max(p_over, p_under)
+
+        # ── K-Prop Win-Probability Gate (June 3 post-mortem) ─────────────────
+        # K-over props are suppressed to LEAN when pitcher's team win prob < 65%.
+        # Protects against early SP pullout risk in blowout losses.
+        k_over_gated = False
+        if edge_over and edge_over == best_edge:
+            team_win_prob = _fetch_team_win_prob(cur, row["game_id"], row["player_id"])
+            if team_win_prob is not None and team_win_prob < K_PROP_WIN_PROB_GATE:
+                k_over_gated = True
+                log.warning(
+                    f"K_OVER_GATED: player_id={row['player_id']} game_id={row['game_id']} "
+                    f"team_win_prob={team_win_prob:.3f} < {K_PROP_WIN_PROB_GATE}"
+                )
 
         # ── Confidence floor filter (June 5) ─────────────────────────────────
-        best_conf = max(p_over, p_under) if p_over and p_under else None
-        below_floor = best_conf is not None and best_conf < CONFIDENCE_FLOOR
-
-        if below_floor:
-            decision = "LEAN"   # shown in UI with 0.5u max tag, not as a full pick
+        if best_conf < CONFIDENCE_FLOOR or k_over_gated:
+            decision = "LEAN"
         else:
             decision = "CANDIDATE" if best_edge and best_edge >= EDGE_THRESHOLD else "NO BET"
 
@@ -136,7 +172,7 @@ def compute_k_edges():
             else:
                 staking = kelly_stake(p_under, row["under_odds"])
         elif decision == "LEAN":
-            staking = 0.005   # 0.5% bankroll max for LEAN tier
+            staking = 0.005
 
         update_cur.execute("""
             UPDATE model_predictions SET
@@ -196,7 +232,6 @@ def compute_run_edges(gamma: float = 1.86):
             continue
 
         # ── TRAP GAME SUPPRESSION (June 5) ────────────────────────────────────
-        # If game_context.is_trap=True, write TRAP_SUPPRESSED and skip card output
         if row.get("is_trap"):
             update_cur.execute("""
                 UPDATE model_predictions SET card_decision='TRAP_SUPPRESSED'
@@ -208,36 +243,43 @@ def compute_run_edges(gamma: float = 1.86):
         # ── Bullpen Fatigue Multiplier (June 3 upgrade) ───────────────────────
         bp_home = _fetch_bp_fatigue(cur, row["home_team_id"], today)
         bp_away = _fetch_bp_fatigue(cur, row["away_team_id"], today)
-
         if bp_home >= BP_CRITICAL_IP:
             mu_h *= BP_CRITICAL_MULT
         elif bp_home >= BP_ELEVATED_IP:
             mu_h *= BP_ELEVATED_MULT
-
         if bp_away >= BP_CRITICAL_IP:
             mu_a *= BP_CRITICAL_MULT
         elif bp_away >= BP_ELEVATED_IP:
             mu_a *= BP_ELEVATED_MULT
 
-        # ── Momentum Delta Layer (June 5) ──────────────────────────────────────
-        # Adjusts model_mean by last-5 run differential to capture team momentum
+        # ── Momentum Delta Layer (June 5) ─────────────────────────────────────
         mom_home = _fetch_momentum_delta(cur, row["home_team_id"], today)
         mom_away = _fetch_momentum_delta(cur, row["away_team_id"], today)
         mu_h = mu_h * (1 + MOMENTUM_WEIGHT * np.tanh(mom_home / 5.0))
         mu_a = mu_a * (1 + MOMENTUM_WEIGHT * np.tanh(mom_away / 5.0))
-        log.debug(f"Momentum adj: home={mom_home:.2f} -> mu_h={mu_h:.3f} | away={mom_away:.2f} -> mu_a={mu_a:.3f}")
-        # ──────────────────────────────────────────────────────────────────────
+
+        # ── Road Blowout Defense (June 3 post-mortem) ─────────────────────────
+        # When road team last-5 road run-diff >= +5, boost their mu by +15%.
+        # Captures hot road squads (CHW, KC, DET pattern from June 3).
+        road_mom_away = _fetch_road_momentum(cur, row["away_team_id"], today)
+        if road_mom_away >= ROAD_BLOWOUT_THRESHOLD:
+            mu_a = mu_a * (1 + ROAD_BLOWOUT_BOOST)
+            log.info(
+                f"ROAD_BLOWOUT_BOOST: away_team={row['away_team_id']} "
+                f"road_run_diff={road_mom_away:.2f} -> mu_a boosted to {mu_a:.3f}"
+            )
 
         p_home = float(mu_h**gamma / (mu_h**gamma + mu_a**gamma))
         p_away = float(1 - p_home)
-        probs_h = [float(poisson.pmf(k, mu_h)) for k in range(max_r + 1)]
-        probs_a = [float(poisson.pmf(k, mu_a)) for k in range(max_r + 1)]
+        probs_h   = [float(poisson.pmf(k, mu_h)) for k in range(max_r + 1)]
+        probs_a   = [float(poisson.pmf(k, mu_a)) for k in range(max_r + 1)]
         probs_tot = [0.0] * (2 * max_r + 2)
         for i in range(max_r + 1):
             for j in range(max_r + 1):
                 probs_tot[i + j] += probs_h[i] * probs_a[j]
 
-        total_line = row["total_line"]
+        total_line  = row["total_line"]
+        model_total = mu_h + mu_a
         p_over_tot  = float(sum(probs_tot[int(total_line) + 1:])) if total_line else None
         p_under_tot = float(1 - p_over_tot) if p_over_tot is not None else None
 
@@ -246,26 +288,37 @@ def compute_run_edges(gamma: float = 1.86):
         p_imp_over  = implied_prob_american(row["total_over_odds"])
         p_imp_under = implied_prob_american(row["total_under_odds"])
 
-        edge_home  = round(p_home - p_imp_home, 4)   if p_imp_home  else None
-        edge_away  = round(p_away - p_imp_away, 4)   if p_imp_away  else None
-        edge_over  = round(p_over_tot - p_imp_over, 4)   if p_imp_over  and p_over_tot  else None
-        edge_under = round(p_under_tot - p_imp_under, 4) if p_imp_under and p_under_tot else None
+        edge_home  = round(p_home - p_imp_home, 4)            if p_imp_home              else None
+        edge_away  = round(p_away - p_imp_away, 4)            if p_imp_away              else None
+        edge_over  = round(p_over_tot  - p_imp_over,  4)      if p_imp_over  and p_over_tot  else None
+        edge_under = round(p_under_tot - p_imp_under, 4)      if p_imp_under and p_under_tot else None
 
-        edges      = [e for e in [edge_home, edge_away, edge_over, edge_under] if e is not None]
-        best_edge  = max(edges) if edges else None
+        edges     = [e for e in [edge_home, edge_away, edge_over, edge_under] if e is not None]
+        best_edge = max(edges) if edges else None
+
+        # ── Extra-Innings Suppressor (June 3 post-mortem) ─────────────────────
+        # When model total is within HIGH_VARIANCE_BAND of the market line,
+        # the game is too coin-flip to trust at full stake. Tag HIGH_VARIANCE
+        # and cap staking at 0.5% regardless of edge size.
+        high_variance = (
+            total_line is not None and
+            abs(model_total - float(total_line)) <= HIGH_VARIANCE_BAND
+        )
+        if high_variance:
+            log.info(
+                f"HIGH_VARIANCE: game_id={row['game_id']} "
+                f"model_total={model_total:.2f} market_line={total_line} "
+                f"delta={abs(model_total - float(total_line)):.2f}"
+            )
 
         # ── Confidence floor (June 5) ─────────────────────────────────────────
-        conf_home = p_home
-        conf_away = p_away
         winning_side = "home" if p_home >= p_away else "away"
-        winning_conf = max(conf_home, conf_away)
+        winning_conf = max(p_home, p_away)
         winning_odds = row["home_odds"] if winning_side == "home" else row["away_odds"]
 
         if winning_conf < CONFIDENCE_FLOOR:
             decision = "LEAN"
-
         # ── Favorite Cliff Rule (June 5) ──────────────────────────────────────
-        # Chalk plays past -180 need a secondary sharp signal or they're downgraded
         elif winning_odds is not None and winning_odds <= FAVORITE_CLIFF_ODDS:
             has_signal = _has_secondary_signal(cur, row["game_id"], winning_side)
             if not has_signal:
@@ -273,9 +326,11 @@ def compute_run_edges(gamma: float = 1.86):
                 log.warning(f"FAVORITE_CLIFF downgrade: game_id={row['game_id']} side={winning_side} odds={winning_odds}")
             else:
                 decision = "CANDIDATE" if best_edge and best_edge >= EDGE_THRESHOLD else "NO BET"
-
         else:
             decision = "CANDIDATE" if best_edge and best_edge >= EDGE_THRESHOLD else "NO BET"
+
+        # HIGH_VARIANCE games get capped staking even if decision is CANDIDATE
+        staking_override = 0.005 if high_variance and decision == "CANDIDATE" else None
 
         update_cur.execute("""
             UPDATE model_predictions SET
@@ -283,14 +338,19 @@ def compute_run_edges(gamma: float = 1.86):
                 edge_home=%s, edge_away=%s, edge_over=%s, edge_under=%s,
                 home_odds=%s, away_odds=%s,
                 line=%s, over_odds=%s, under_odds=%s,
-                card_decision=%s
+                card_decision=%s,
+                staking_pct=COALESCE(%s, staking_pct),
+                high_variance=%s
             WHERE id=%s
         """, (
             p_home, p_away, p_over_tot, p_under_tot,
             edge_home, edge_away, edge_over, edge_under,
             row["home_odds"], row["away_odds"],
             total_line, row["total_over_odds"], row["total_under_odds"],
-            decision, row["id"]
+            decision,
+            staking_override,
+            high_variance,
+            row["id"]
         ))
 
     conn.commit()
