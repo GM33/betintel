@@ -1,0 +1,80 @@
+{
+  "last_updated": "2026-06-05T04:21:54.622519",
+  "total_picks": 6,
+  "total_wins": 5,
+  "by_tier": {
+    "strong_bet": {
+      "picks": 3,
+      "wins": 3,
+      "win_rate": 1.0
+    },
+    "value_bet": {
+      "picks": 2,
+      "wins": 2,
+      "win_rate": 1.0
+    },
+    "marginal_bet": {
+      "picks": 1,
+      "wins": 0,
+      "win_rate": 0.0
+    }
+  },
+  "by_sport": {
+    "NBA": {
+      "picks": 1,
+      "wins": 1,
+      "win_rate": 1.0
+    },
+    "MLB": {
+      "picks": 4,
+      "wins": 3,
+      "win_rate": 0.75
+    },
+    "NHL": {
+      "picks": 1,
+      "wins": 1,
+      "win_rate": 1.0
+    }
+  },
+  "by_bet_type": {
+    "spread": {
+      "picks": 1,
+      "wins": 1,
+      "win_rate": 1.0
+    },
+    "moneyline": {
+      "picks": 2,
+      "wins": 1,
+      "win_rate": 0.5
+    },
+    "team_total": {
+      "picks": 1,
+      "wins": 1,
+      "win_rate": 1.0
+    },
+    "total_goals": {
+      "picks": 1,
+      "wins": 1,
+      "win_rate": 1.0
+    },
+    "total_runs": {
+      "picks": 1,
+      "wins": 1,
+      "win_rate": 1.0
+    }
+  },
+  "recommended_weight_adjustments": {
+    "strong_bet": {
+      "status": "insufficient_sample",
+      "picks": 3
+    },
+    "value_bet": {
+      "status": "insufficient_sample",
+      "picks": 2
+    },
+    "marginal_bet": {
+      "status": "insufficient_sample",
+      "picks": 1
+    }
+  }
+}
