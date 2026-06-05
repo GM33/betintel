@@ -1,0 +1,22 @@
+{
+  "version": "2026-06-05",
+  "calibrated_from": "2026-06-04",
+  "sample_size": 6,
+  "overall_win_rate": 0.833,
+  "tier_weights": {
+    "strong_bet":   {"baseline_edge": 0.06, "weight": 1.10, "adj": +0.10, "rationale": "3/3 (100%) on Jun 4 — boosted"},
+    "value_bet":    {"baseline_edge": 0.03, "weight": 0.80, "adj": +0.05, "rationale": "2/2 (100%) on Jun 4 — modest boost"},
+    "marginal_bet": {"baseline_edge": 0.01, "weight": 0.45, "adj": -0.05, "rationale": "0/1 (0%) on Jun 4 — penalised, avoid"}
+  },
+  "sport_performance": {
+    "MLB": {"win_rate": 0.75, "note": "primary sport"},
+    "NBA": {"win_rate": 1.00, "note": "single sample"},
+    "NHL": {"win_rate": 1.00, "note": "single sample"}
+  },
+  "bet_type_performance": {
+    "moneyline":  {"win_rate": 0.50, "note": "marginal pick dragging — filter to strong/value only"},
+    "team_total": {"win_rate": 1.00, "note": "1st inning unders strong signal"},
+    "total_runs": {"win_rate": 1.00, "note": "game totals strong"},
+    "spread":     {"win_rate": 1.00, "note": "single sample"}
+  }
+}

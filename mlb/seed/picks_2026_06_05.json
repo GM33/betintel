@@ -1,0 +1,15 @@
+[
+  {"game":"ATH @ CHC","time":"8:05 PM ET","bet":"U9.5","model_prob":0.679,"edge":0.1788,"cal_adj":0.1,"adj_edge":0.2788,"tier":"strong_bet","odds":-110,"away_starter":"Undecided","home_starter":"Shota Imanaga"},
+  {"game":"PIT @ HOU","time":"8:10 PM ET","bet":"O7.5","model_prob":0.640,"edge":0.1398,"cal_adj":0.1,"adj_edge":0.2398,"tier":"strong_bet","odds":-110,"away_starter":"Paul Skenes","home_starter":"Spencer Arrighetti"},
+  {"game":"LAD @ ARI","time":"9:40 PM ET","bet":"U9.0","model_prob":0.601,"edge":0.1049,"cal_adj":0.1,"adj_edge":0.2049,"tier":"strong_bet","odds":-108,"away_starter":"Justin Wrobleski","home_starter":"Ryne Nelson"},
+  {"game":"ATH @ CHC","time":"8:05 PM ET","bet":"ATH ML","model_prob":0.511,"edge":0.1043,"cal_adj":0.1,"adj_edge":0.2043,"tier":"strong_bet","odds":138,"away_starter":"Undecided","home_starter":"Shota Imanaga"},
+  {"game":"STL @ CIN","time":"8:15 PM ET","bet":"U8.5","model_prob":0.592,"edge":0.0925,"cal_adj":0.1,"adj_edge":0.1925,"tier":"strong_bet","odds":-110,"away_starter":"Andre Pallante","home_starter":"Chase Burns"},
+  {"game":"COL @ MIL","time":"8:40 PM ET","bet":"U8.0","model_prob":0.581,"edge":0.0808,"cal_adj":0.1,"adj_edge":0.1808,"tier":"strong_bet","odds":-110,"away_starter":"Michael Lorenzen","home_starter":"Logan Webb"},
+  {"game":"SEA @ DET","time":"2:20 PM ET","bet":"U8.0","model_prob":0.579,"edge":0.0786,"cal_adj":0.1,"adj_edge":0.1786,"tier":"strong_bet","odds":-110,"away_starter":"Robbie Ray","home_starter":"Edward Cabrera"},
+  {"game":"TOR @ ATL","time":"7:15 PM ET","bet":"U8.0","model_prob":0.579,"edge":0.0786,"cal_adj":0.1,"adj_edge":0.1786,"tier":"strong_bet","odds":-110,"away_starter":"Undecided","home_starter":"Chris Sale"},
+  {"game":"COL @ MIL","time":"8:40 PM ET","bet":"COL ML","model_prob":0.396,"edge":0.0685,"cal_adj":0.1,"adj_edge":0.1685,"tier":"strong_bet","odds":195,"away_starter":"Michael Lorenzen","home_starter":"Logan Webb"},
+  {"game":"SD @ PHI","time":"9:40 PM ET","bet":"U8.0","model_prob":0.551,"edge":0.0507,"cal_adj":0.05,"adj_edge":0.1007,"tier":"value_bet","odds":-110,"away_starter":"TBD","home_starter":"TBD"},
+  {"game":"SD @ PHI","time":"9:40 PM ET","bet":"SD ML","model_prob":0.444,"edge":0.0481,"cal_adj":0.05,"adj_edge":0.0981,"tier":"value_bet","odds":145,"away_starter":"TBD","home_starter":"TBD"},
+  {"game":"SEA @ DET","time":"2:20 PM ET","bet":"SEA ML","model_prob":0.466,"edge":0.0462,"cal_adj":0.05,"adj_edge":0.0962,"tier":"value_bet","odds":132,"away_starter":"Robbie Ray","home_starter":"Edward Cabrera"},
+  {"game":"STL @ CIN","time":"8:15 PM ET","bet":"CIN ML","model_prob":0.569,"edge":0.0333,"cal_adj":0.05,"adj_edge":0.0833,"tier":"value_bet","odds":-125,"away_starter":"Andre Pallante","home_starter":"Chase Burns"}
+]
