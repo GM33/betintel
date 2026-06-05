@@ -1,80 +1,52 @@
 name: BetIntel Deploy Pipeline
-
 on:
   push:
-    branches: [main]
-
-permissions:
-  contents: read
-
+    branches: ["main"]
 jobs:
   detect-changes:
     runs-on: ubuntu-latest
     outputs:
-      frontend: ${{ steps.filter.outputs.frontend }}
-      workers: ${{ steps.filter.outputs.workers }}
-
+      mlb: ${{ steps.changes.outputs.mlb }}
+      frontend: ${{ steps.changes.outputs.frontend }}
     steps:
       - name: Checkout
-        uses: actions/checkout@REPLACE_WITH_REAL_40_CHAR_SHA
-
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
       - name: Detect changed paths
-        id: filter
-        uses: dorny/paths-filter@REPLACE_WITH_REAL_40_CHAR_SHA
+        id: changes
+        uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36  # v3.0.2
         with:
           filters: |
-            frontend:
-              - 'api/**'
-              - 'index.html'
-              - 'vercel.json'
-              - 'frontend/**'
-            workers:
+            mlb:
               - 'mlb/**'
-              - 'wnba/**'
-              - 'nba/**'
-              - 'ws/**'
-              - 'config.py'
-              - 'railway.json'
-              - 'nixpacks.toml'
-              - 'requirements.txt'
-
-  deploy-frontend:
-    name: Deploy Frontend to Vercel
+            frontend:
+              - 'src/**'
+              - 'public/**'
+              - 'package.json'
+              - 'next.config.*'
+  deploy-railway:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.mlb == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+      - name: Deploy to Railway
+        run: railway up --service betintel-cron --detach
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  deploy-vercel:
     needs: detect-changes
     if: needs.detect-changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
-        uses: actions/checkout@REPLACE_WITH_REAL_40_CHAR_SHA
-
-      - name: Setup Node
-        uses: actions/setup-node@REPLACE_WITH_REAL_40_CHAR_SHA
-        with:
-          node-version: 20
-
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - name: Install Vercel CLI
+        run: npm install -g vercel
       - name: Deploy to Vercel
-        run: npx vercel --prod --token=${{ secrets.VERCEL_TOKEN }} --yes
+        run: vercel --prod --token=${{ secrets.VERCEL_TOKEN }} --yes
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-
-  deploy-workers:
-    name: Deploy Workers to Railway
-    needs: detect-changes
-    if: needs.detect-changes.outputs.workers == 'true'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@REPLACE_WITH_REAL_40_CHAR_SHA
-
-      - name: Setup Node for Railway CLI
-        uses: actions/setup-node@REPLACE_WITH_REAL_40_CHAR_SHA
-        with:
-          node-version: 20
-
-      - name: Deploy to Railway
-        run: npx @railway/cli up --service betintel-workers --detach
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
