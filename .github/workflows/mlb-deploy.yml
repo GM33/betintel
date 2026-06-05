@@ -7,13 +7,17 @@ on:
       - 'mlb/**'
       - '.github/workflows/mlb-deploy.yml'
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
     name: Deploy to Railway
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@REPLACE_CHECKOUT_SHA
 
       - name: Install Railway CLI
         run: npm install -g @railway/cli
