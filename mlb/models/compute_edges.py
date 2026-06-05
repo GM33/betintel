@@ -16,21 +16,28 @@ BP_ELEVATED_MULT = 1.06
 
 # ── June 5 recalibration: confidence floor & favorite cliff ──────────────────
 CONFIDENCE_FLOOR    = 0.60
-# Backtest (May 30–Jun 4): -180 was too aggressive, missed 5 chalk wins (LAD/HOU).
-# Raised to -220. At -220, books are pricing ~69%+ implied — if model agrees,
-# the bet has genuine edge. Between -180 and -220 the secondary signal check
-# still applies, so marginal chalk is still filtered.
-FAVORITE_CLIFF_ODDS = -220   # was -180 — raised after 7-day backtest
+FAVORITE_CLIFF_ODDS = -220
 MOMENTUM_WEIGHT     = 0.12
 
 # ── June 3 post-mortem constants ──────────────────────────────────────────────
-# K_PROP_WIN_PROB_GATE lowered 65%→60% after backtest: 65% blocked Gallen K-Over
-# (a genuine W) on Jun 3 while 60% still catches the Arrighetti/Cole blowout
-# pullout scenarios. Net improvement: +1 pick recovered, same protection.
-K_PROP_WIN_PROB_GATE   = 0.60   # was 0.65 — lowered after 7-day backtest
+K_PROP_WIN_PROB_GATE   = 0.60
 HIGH_VARIANCE_BAND     = 0.50
 ROAD_BLOWOUT_THRESHOLD = 5.0
 ROAD_BLOWOUT_BOOST     = 0.15
+
+# ── VALUE_DOG rule (June 5) ───────────────────────────────────────────────────
+# 2026 MLB league-wide: road dogs win ML at 60.7% (147-95, BettingPros).
+# Rule fires when ALL three conditions are met:
+#   1. Away team odds >= +120  (plus-money, not a near pick-em)
+#   2. Home team season run-differential <= +20  (weak home chalk)
+#   3. Away team wRC+ rank <= 15  (top-half offense — floors out junk dogs)
+# When triggered, model boosts p_away by VALUE_DOG_BOOST before edge calc,
+# reflecting the structural market underpricing of qualifying road dogs.
+# Source: CIN @ STL June 5 case study + 2026 league trend confirmed.
+VALUE_DOG_MIN_ODDS     = 120    # away_odds must be >= +120
+VALUE_DOG_MAX_HOME_RD  = 20.0   # home team season run-diff must be <= +20
+VALUE_DOG_MAX_WRC_RANK = 15     # away team wRC+ rank must be top 15
+VALUE_DOG_BOOST        = 0.04   # +4% to p_away — conservative; re-evaluate after 30-game sample
 
 def get_db():
     return psycopg2.connect(DATABASE_URL)
@@ -118,6 +125,31 @@ def _has_secondary_signal(cur, game_id, side):
     line_moved_sharp, sharp_money_pct, sp_fip_edge = row
     return bool(line_moved_sharp) or (sharp_money_pct and sharp_money_pct >= 60) or (sp_fip_edge and sp_fip_edge >= 0.03)
 
+def _fetch_value_dog_inputs(cur, home_team_id, away_team_id, date_str):
+    """
+    Fetches the two team-level stats needed for VALUE_DOG rule evaluation:
+      - home team season run-differential
+      - away team wRC+ rank (1 = best offense in MLB)
+    Returns (home_season_rd, away_wrc_rank) or (None, None) if data missing.
+    """
+    cur.execute("""
+        SELECT season_run_diff
+        FROM team_season_stats
+        WHERE team_id=%s AND season=EXTRACT(YEAR FROM %s::date)
+    """, (home_team_id, date_str))
+    row = cur.fetchone()
+    home_rd = float(row[0]) if row and row[0] is not None else None
+
+    cur.execute("""
+        SELECT wrc_plus_rank
+        FROM team_season_stats
+        WHERE team_id=%s AND season=EXTRACT(YEAR FROM %s::date)
+    """, (away_team_id, date_str))
+    row = cur.fetchone()
+    away_wrc_rank = int(row[0]) if row and row[0] is not None else None
+
+    return home_rd, away_wrc_rank
+
 def compute_k_edges():
     conn = get_db()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -156,8 +188,6 @@ def compute_k_edges():
         best_conf = max(p_over, p_under)
 
         # ── K-Prop Win-Probability Gate (June 3 post-mortem, tuned Jun 5) ────
-        # Threshold lowered 65%→60% after backtest: same blowout protection,
-        # +1 marginal CANDIDATE recovered (Gallen-type: team at 61-64% still fires).
         k_over_gated = False
         if edge_over and edge_over == best_edge:
             team_win_prob = _fetch_team_win_prob(cur, row["game_id"], row["player_id"])
@@ -168,7 +198,6 @@ def compute_k_edges():
                     f"team_win_prob={team_win_prob:.3f} < {K_PROP_WIN_PROB_GATE}"
                 )
 
-        # ── Confidence floor (June 5) ─────────────────────────────────────────
         if best_conf < CONFIDENCE_FLOOR or k_over_gated:
             decision = "LEAN"
         else:
@@ -268,8 +297,6 @@ def compute_run_edges(gamma: float = 1.86):
         mu_a = mu_a * (1 + MOMENTUM_WEIGHT * np.tanh(mom_away / 5.0))
 
         # ── Road Blowout Defense (June 3 post-mortem) ─────────────────────────
-        # MVP rule in 7-day backtest: 4 losses saved, 0 wins missed (+4.0u net).
-        # Threshold kept at +5.0 road run-diff — no change needed.
         road_mom_away = _fetch_road_momentum(cur, row["away_team_id"], today)
         if road_mom_away >= ROAD_BLOWOUT_THRESHOLD:
             mu_a = mu_a * (1 + ROAD_BLOWOUT_BOOST)
@@ -280,6 +307,31 @@ def compute_run_edges(gamma: float = 1.86):
 
         p_home = float(mu_h**gamma / (mu_h**gamma + mu_a**gamma))
         p_away = float(1 - p_home)
+
+        # ── VALUE_DOG Rule (June 5) ────────────────────────────────────────────
+        # Fires when road team is a +120 or better underdog against a weak home
+        # team (season RD <= +20) AND road team has a top-15 wRC+ offense.
+        # 2026 trend: road dogs at +120+ win ML at 60.7% league-wide.
+        # Boost is conservative (+4%) — re-evaluate after 30-game live sample.
+        value_dog_triggered = False
+        away_odds = row["away_odds"]
+        if away_odds is not None and away_odds >= VALUE_DOG_MIN_ODDS:
+            home_rd, away_wrc_rank = _fetch_value_dog_inputs(
+                cur, row["home_team_id"], row["away_team_id"], today
+            )
+            if (
+                home_rd is not None and home_rd <= VALUE_DOG_MAX_HOME_RD and
+                away_wrc_rank is not None and away_wrc_rank <= VALUE_DOG_MAX_WRC_RANK
+            ):
+                p_away = min(p_away * (1 + VALUE_DOG_BOOST), 0.99)
+                p_home = 1 - p_away
+                value_dog_triggered = True
+                log.info(
+                    f"VALUE_DOG: game_id={row['game_id']} away_odds=+{away_odds} "
+                    f"home_rd={home_rd:.1f} away_wrc_rank={away_wrc_rank} "
+                    f"-> p_away boosted to {p_away:.3f}"
+                )
+
         probs_h   = [float(poisson.pmf(k, mu_h)) for k in range(max_r + 1)]
         probs_a   = [float(poisson.pmf(k, mu_a)) for k in range(max_r + 1)]
         probs_tot = [0.0] * (2 * max_r + 2)
@@ -324,10 +376,7 @@ def compute_run_edges(gamma: float = 1.86):
 
         if winning_conf < CONFIDENCE_FLOOR:
             decision = "LEAN"
-        # ── Favorite Cliff Rule (tuned Jun 5 backtest: -180→-220) ─────────────
-        # At -220 the implied prob is ~69%. Below that the book is pricing
-        # near-certainty; our edge is razor-thin and variance is all downside.
-        # Secondary signal check still required between -220 and -180 zone.
+        # ── Favorite Cliff (tuned Jun 5: -180→-220) ───────────────────────────
         elif winning_odds is not None and winning_odds <= FAVORITE_CLIFF_ODDS:
             has_signal = _has_secondary_signal(cur, row["game_id"], winning_side)
             if not has_signal:
@@ -348,7 +397,8 @@ def compute_run_edges(gamma: float = 1.86):
                 line=%s, over_odds=%s, under_odds=%s,
                 card_decision=%s,
                 staking_pct=COALESCE(%s, staking_pct),
-                high_variance=%s
+                high_variance=%s,
+                value_dog=%s
             WHERE id=%s
         """, (
             p_home, p_away, p_over_tot, p_under_tot,
@@ -358,6 +408,7 @@ def compute_run_edges(gamma: float = 1.86):
             decision,
             staking_override,
             high_variance,
+            value_dog_triggered,
             row["id"]
         ))
 
