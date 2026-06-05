@@ -8,6 +8,8 @@ from mlb.ingestion.odds import fetch_odds
 from mlb.ingestion.props import fetch_player_props
 from mlb.ingestion.results import fetch_results
 from mlb.ingestion.weather import fetch_weather_for_today
+from mlb.ingestion.team_momentum import compute_and_store_momentum
+from mlb.ingestion.team_season_stats import compute_and_store_season_stats
 from mlb.models.predict_k import predict_k_for_today
 from mlb.models.predict_runs import predict_runs_for_today
 from mlb.models.compute_edges import compute_k_edges, compute_run_edges
@@ -18,14 +20,19 @@ from mlb.calibration.calibrate_runs import run_calibration_update_runs
 logging.basicConfig(level=logging.INFO)
 scheduler = BlockingScheduler(timezone="America/New_York")
 
-# Morning batch
+# ── Morning batch ─────────────────────────────────────────────────────────────
 scheduler.add_job(fetch_bullpen_usage,             "cron", hour=8,  minute=0)
+# team_season_stats: season run-diff + wRC+ rank — feeds VALUE_DOG rule
+# Must run before compute_run_edges (13:35). Placed at 08:05 so data is
+# available for both the pre-game (13:35) and evening (18:55) model runs.
+scheduler.add_job(compute_and_store_season_stats,  "cron", hour=8,  minute=5)
+scheduler.add_job(compute_and_store_momentum,      "cron", hour=8,  minute=10)
 scheduler.add_job(fetch_schedule,                  "cron", hour=9,  minute=0)
 scheduler.add_job(lambda: fetch_odds("open"),      "cron", hour=10, minute=30)
 scheduler.add_job(fetch_schedule,                  "cron", hour=11, minute=0)
 scheduler.add_job(fetch_player_props,              "cron", hour=12, minute=0)
 
-# Pre-game batch (day games T-2hr proxy)
+# ── Pre-game batch (day games T-2hr proxy) ────────────────────────────────────
 scheduler.add_job(fetch_weather_for_today,         "cron", hour=13, minute=0)
 scheduler.add_job(lambda: fetch_odds("pre_game"),  "cron", hour=13, minute=5)
 scheduler.add_job(fetch_lineups,                   "cron", hour=13, minute=10)
@@ -35,12 +42,12 @@ scheduler.add_job(compute_k_edges,                 "cron", hour=13, minute=30)
 scheduler.add_job(compute_run_edges,               "cron", hour=13, minute=35)
 scheduler.add_job(run_analyst_agent_for_today,     "cron", hour=13, minute=45)
 
-# Evening pre-game batch (T-30min for night games)
+# ── Evening pre-game batch (T-30min for night games) ──────────────────────────
 scheduler.add_job(lambda: fetch_odds("final_pre"), "cron", hour=18, minute=45)
 scheduler.add_job(fetch_lineups,                   "cron", hour=18, minute=50)
 scheduler.add_job(run_analyst_agent_for_today,     "cron", hour=18, minute=55)
 
-# Post-game calibration
+# ── Post-game calibration ─────────────────────────────────────────────────────
 scheduler.add_job(fetch_results,                   "cron", hour=23, minute=30)
 scheduler.add_job(run_calibration_update_k,        "cron", hour=23, minute=50)
 scheduler.add_job(run_calibration_update_runs,     "cron", hour=23, minute=55)
