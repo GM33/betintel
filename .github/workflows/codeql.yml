@@ -1,17 +1,18 @@
 jobs:
   analyze:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
-        uses: actions/checkout@FULL_40_CHAR_SHA
+        uses: actions/checkout@<full_40_char_sha>
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@FULL_40_CHAR_SHA
+        uses: github/codeql-action/init@<full_40_char_sha>
         with:
           languages: javascript-typescript
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@FULL_40_CHAR_SHA
+        uses: github/codeql-action/autobuild@<full_40_char_sha>
 
       - name: Analyze
-        uses: github/codeql-action/analyze@FULL_40_CHAR_SHA
+        uses: github/codeql-action/analyze@<full_40_char_sha>
