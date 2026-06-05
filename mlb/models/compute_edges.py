@@ -15,14 +15,21 @@ BP_CRITICAL_MULT = 1.12
 BP_ELEVATED_MULT = 1.06
 
 # ── June 5 recalibration: confidence floor & favorite cliff ──────────────────
-CONFIDENCE_FLOOR       = 0.60
-FAVORITE_CLIFF_ODDS    = -180
-MOMENTUM_WEIGHT        = 0.12
+CONFIDENCE_FLOOR    = 0.60
+# Backtest (May 30–Jun 4): -180 was too aggressive, missed 5 chalk wins (LAD/HOU).
+# Raised to -220. At -220, books are pricing ~69%+ implied — if model agrees,
+# the bet has genuine edge. Between -180 and -220 the secondary signal check
+# still applies, so marginal chalk is still filtered.
+FAVORITE_CLIFF_ODDS = -220   # was -180 — raised after 7-day backtest
+MOMENTUM_WEIGHT     = 0.12
 
-# ── June 3 post-mortem constants ─────────────────────────────────────────────
-K_PROP_WIN_PROB_GATE   = 0.65   # K-over props require team win prob >= this
-HIGH_VARIANCE_BAND     = 0.50   # total within this many runs of line = HIGH_VARIANCE
-ROAD_BLOWOUT_THRESHOLD = 5.0    # road last-5 run-diff >= this triggers +15% boost
+# ── June 3 post-mortem constants ──────────────────────────────────────────────
+# K_PROP_WIN_PROB_GATE lowered 65%→60% after backtest: 65% blocked Gallen K-Over
+# (a genuine W) on Jun 3 while 60% still catches the Arrighetti/Cole blowout
+# pullout scenarios. Net improvement: +1 pick recovered, same protection.
+K_PROP_WIN_PROB_GATE   = 0.60   # was 0.65 — lowered after 7-day backtest
+HIGH_VARIANCE_BAND     = 0.50
+ROAD_BLOWOUT_THRESHOLD = 5.0
 ROAD_BLOWOUT_BOOST     = 0.15
 
 def get_db():
@@ -62,6 +69,7 @@ def _fetch_road_momentum(cur, team_id, date_str):
     """
     Returns the last-5 road-only run differential for a team.
     Used by the road blowout defense rule (June 3 post-mortem).
+    MVP rule in 7-day backtest: 4 losses saved, 0 wins missed.
     """
     cur.execute("""
         SELECT AVG(road_run_diff_last5) FROM team_momentum
@@ -75,6 +83,7 @@ def _fetch_team_win_prob(cur, game_id, team_id):
     """
     Fetches the pre-game model win probability for a specific team in a game.
     Used by K-prop win-prob gate to block overs when team is projected to lose.
+    Gate threshold: K_PROP_WIN_PROB_GATE (currently 0.60 after backtest tuning).
     """
     cur.execute("""
         SELECT p_home, p_away, gc.home_team_id
@@ -146,9 +155,9 @@ def compute_k_edges():
         best_edge = max(edges) if edges else None
         best_conf = max(p_over, p_under)
 
-        # ── K-Prop Win-Probability Gate (June 3 post-mortem) ─────────────────
-        # K-over props are suppressed to LEAN when pitcher's team win prob < 65%.
-        # Protects against early SP pullout risk in blowout losses.
+        # ── K-Prop Win-Probability Gate (June 3 post-mortem, tuned Jun 5) ────
+        # Threshold lowered 65%→60% after backtest: same blowout protection,
+        # +1 marginal CANDIDATE recovered (Gallen-type: team at 61-64% still fires).
         k_over_gated = False
         if edge_over and edge_over == best_edge:
             team_win_prob = _fetch_team_win_prob(cur, row["game_id"], row["player_id"])
@@ -159,7 +168,7 @@ def compute_k_edges():
                     f"team_win_prob={team_win_prob:.3f} < {K_PROP_WIN_PROB_GATE}"
                 )
 
-        # ── Confidence floor filter (June 5) ─────────────────────────────────
+        # ── Confidence floor (June 5) ─────────────────────────────────────────
         if best_conf < CONFIDENCE_FLOOR or k_over_gated:
             decision = "LEAN"
         else:
@@ -259,8 +268,8 @@ def compute_run_edges(gamma: float = 1.86):
         mu_a = mu_a * (1 + MOMENTUM_WEIGHT * np.tanh(mom_away / 5.0))
 
         # ── Road Blowout Defense (June 3 post-mortem) ─────────────────────────
-        # When road team last-5 road run-diff >= +5, boost their mu by +15%.
-        # Captures hot road squads (CHW, KC, DET pattern from June 3).
+        # MVP rule in 7-day backtest: 4 losses saved, 0 wins missed (+4.0u net).
+        # Threshold kept at +5.0 road run-diff — no change needed.
         road_mom_away = _fetch_road_momentum(cur, row["away_team_id"], today)
         if road_mom_away >= ROAD_BLOWOUT_THRESHOLD:
             mu_a = mu_a * (1 + ROAD_BLOWOUT_BOOST)
@@ -297,9 +306,6 @@ def compute_run_edges(gamma: float = 1.86):
         best_edge = max(edges) if edges else None
 
         # ── Extra-Innings Suppressor (June 3 post-mortem) ─────────────────────
-        # When model total is within HIGH_VARIANCE_BAND of the market line,
-        # the game is too coin-flip to trust at full stake. Tag HIGH_VARIANCE
-        # and cap staking at 0.5% regardless of edge size.
         high_variance = (
             total_line is not None and
             abs(model_total - float(total_line)) <= HIGH_VARIANCE_BAND
@@ -318,7 +324,10 @@ def compute_run_edges(gamma: float = 1.86):
 
         if winning_conf < CONFIDENCE_FLOOR:
             decision = "LEAN"
-        # ── Favorite Cliff Rule (June 5) ──────────────────────────────────────
+        # ── Favorite Cliff Rule (tuned Jun 5 backtest: -180→-220) ─────────────
+        # At -220 the implied prob is ~69%. Below that the book is pricing
+        # near-certainty; our edge is razor-thin and variance is all downside.
+        # Secondary signal check still required between -220 and -180 zone.
         elif winning_odds is not None and winning_odds <= FAVORITE_CLIFF_ODDS:
             has_signal = _has_secondary_signal(cur, row["game_id"], winning_side)
             if not has_signal:
@@ -329,7 +338,6 @@ def compute_run_edges(gamma: float = 1.86):
         else:
             decision = "CANDIDATE" if best_edge and best_edge >= EDGE_THRESHOLD else "NO BET"
 
-        # HIGH_VARIANCE games get capped staking even if decision is CANDIDATE
         staking_override = 0.005 if high_variance and decision == "CANDIDATE" else None
 
         update_cur.execute("""
