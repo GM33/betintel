@@ -79,9 +79,39 @@ def api_picks(sport: Optional[str] = Query(default=None), date: Optional[str] = 
     return get_k_prop_cards(date=date)
 
 
+@app.get("/api/mlb-picks")
+def api_mlb_picks(date: Optional[str] = Query(default=None), confidence: Optional[str] = Query(default=None)):
+    return get_k_prop_cards(date=date, confidence=confidence)
+
+
+@app.get("/api/wnba-picks")
+def api_wnba_picks(date: Optional[str] = Query(default=None), confidence: Optional[str] = Query(default=None)):
+    # Stub: wire real WNBA data source here when available
+    return []
+
+
+@app.get("/api/news")
+def api_news(sport: Optional[str] = Query(default=None), limit: Optional[int] = Query(default=10)):
+    # Stub: wire real news feed here when available
+    return []
+
+
+@app.get("/api/props")
+def api_props(
+    sport: Optional[str] = Query(default=None),
+    market: Optional[str] = Query(default=None),
+    date: Optional[str] = Query(default=None),
+    confidence: Optional[str] = Query(default=None),
+):
+    if sport == "mlb" or sport is None:
+        if market is None or market in ("strikeouts", "k", "k_strikeouts"):
+            return get_k_prop_cards(date=date, confidence=confidence)
+    return []
+
+
 @app.get("/api/arb")
 def api_arb(sport: Optional[str] = Query(default=None)):
-    return {"opportunities": []}
+    return {"sport": sport or "all", "opportunities": []}
 
 
 # --- CARD ROUTES ---
