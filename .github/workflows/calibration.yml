@@ -1,0 +1,52 @@
+name: Run Calibration Updater
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Ingest mode: "all" to process all result files, or a specific filename like "pick_results_2026_06_04.json"'
+        required: false
+        default: 'all'
+  push:
+    paths:
+      - 'mlb/seed/pick_results_*.json'
+
+permissions:
+  contents: write
+
+jobs:
+  calibrate:
+    name: Update Calibration State
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Set up Python
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install --no-cache-dir -r mlb/requirements.txt || true
+
+      - name: Run calibration updater (all results)
+        if: ${{ github.event.inputs.mode == 'all' || github.event_name == 'push' }}
+        run: |
+          cd ${{ github.workspace }}
+          python mlb/calibration/update_from_results.py --all
+
+      - name: Run calibration updater (specific file)
+        if: ${{ github.event.inputs.mode != 'all' && github.event_name == 'workflow_dispatch' }}
+        run: |
+          cd ${{ github.workspace }}
+          python mlb/calibration/update_from_results.py --results mlb/seed/${{ github.event.inputs.mode }}
+
+      - name: Commit calibration state
+        run: |
+          git config user.name  "betintel-bot"
+          git config user.email "bot@betintel.bet"
+          git add mlb/calibration/calibration_state.json || true
+          git diff --cached --quiet || git commit -m "chore: update calibration_state.json [skip ci]"
+          git push
