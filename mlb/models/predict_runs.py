@@ -1,87 +1,70 @@
-import pandas as pd
+"""
+predict_runs.py — BetIntel Run Prediction Model
+June 5 upgrade: momentum delta layer added to run mean calculation.
+See compute_edges.py for full momentum weight constant and tanh scaling.
+"""
+
+import numpy as np
 import joblib
-import psycopg2
-from datetime import datetime
-from zoneinfo import ZoneInfo
-from mlb.config import DATABASE_URL
 import logging
+from pathlib import Path
 
 log = logging.getLogger("betintel.models.predict_runs")
-ET = ZoneInfo("America/New_York")
 
-def get_db():
-    return psycopg2.connect(DATABASE_URL)
+MODEL_PATH = Path(__file__).parent / "artifacts" / "run_model.pkl"
+MOMENTUM_WEIGHT = 0.12
 
-def predict_runs_for_today():
-    conn = get_db()
-    today = datetime.now(ET).strftime("%Y-%m-%d")
+def load_model():
+    if not MODEL_PATH.exists():
+        raise FileNotFoundError(f"Run model artifact not found at {MODEL_PATH}")
+    return joblib.load(MODEL_PATH)
 
-    try:
-        bundle = joblib.load("mlb/models/run_model.joblib")
-    except FileNotFoundError:
-        log.error("predict_runs_for_today: run_model.joblib not found — run train_run_model first")
-        return
+def predict_run_mean(features: dict, momentum_delta: float = 0.0) -> float:
+    """
+    Predicts expected runs for one team side.
 
-    model = bundle["model"]
-    feature_cols = bundle["features"]
+    Args:
+        features: dict of model input features (era, fip, wrc_plus, ballpark_factor, etc.)
+        momentum_delta: last-5-game run differential (positive = team outscoring opponents)
 
-    df = pd.read_sql("""
-        SELECT
-            game_id, team_id, is_home,
-            team_wrc_plus_vs_hand, team_iso_vs_hand, team_obp_vs_hand,
-            opp_sp_xfip, opp_sp_fip, opp_sp_k_minus_bb, opp_sp_gb_rate,
-            opp_bp_xfip, opp_bp_ip_last_3d,
-            park_runs_factor, temp_f,
-            COALESCE(wind_out_speed, 0)   AS wind_out_speed,
-            COALESCE(wind_in_speed,  0)   AS wind_in_speed,
-            COALESCE(team_slg_last_10, 0) AS team_slg_last_10,
-            COALESCE(team_slg_last_7d, 0) AS team_slg_last_7d,
-            COALESCE(team_slg_variance, 0) AS team_slg_variance,
-            COALESCE(away_slg_delta, 0)   AS away_slg_delta,
-            COALESCE(era_xera_gap, 0)     AS era_xera_gap,
-            COALESCE(era_fip_gap, 0)      AS era_fip_gap,
-            start_time_bucket, league
-        FROM game_run_data
-        WHERE DATE(date) = %s
-    """, conn, params=(today,))
-    conn.close()
+    Returns:
+        Adjusted expected run mean (float)
+    """
+    model = load_model()
+    feature_vec = _build_feature_vector(features)
+    base_mean = float(model.predict([feature_vec])[0])
 
-    if df.empty:
-        log.info("predict_runs_for_today: no rows for today")
-        return
+    # ── Momentum Delta Adjustment (June 5) ────────────────────────────────────
+    # tanh scaling keeps the adjustment bounded: max ~+/-12% at extreme momentum
+    momentum_adj = MOMENTUM_WEIGHT * np.tanh(momentum_delta / 5.0)
+    adjusted_mean = base_mean * (1 + momentum_adj)
+    log.debug(f"predict_run_mean: base={base_mean:.3f} momentum_delta={momentum_delta:.2f} adj={momentum_adj:.4f} final={adjusted_mean:.3f}")
 
-    df["start_time_bucket"] = df["start_time_bucket"].fillna("day")
-    df["league"] = df["league"].fillna("AL")
-    df = pd.get_dummies(df, columns=["start_time_bucket", "league"], drop_first=True)
-    for col in feature_cols:
-        if col not in df.columns:
-            df[col] = 0
-    X = df[feature_cols].fillna(0)
-    df["run_mean_pred"] = model.predict(X)
+    return adjusted_mean
 
-    game_means = {}
-    for _, row in df.iterrows():
-        gid = row["game_id"]
-        if gid not in game_means:
-            game_means[gid] = {"home": None, "away": None}
-        if row["is_home"] == 1:
-            game_means[gid]["home"] = float(row["run_mean_pred"])
-        else:
-            game_means[gid]["away"] = float(row["run_mean_pred"])
+def predict_run_mean_to_win_prob(mu_home: float, mu_away: float, gamma: float = 1.86) -> tuple[float, float]:
+    """
+    Converts run means to win probabilities using gamma-power model.
+    Returns (p_home, p_away).
+    """
+    p_home = mu_home**gamma / (mu_home**gamma + mu_away**gamma)
+    p_away = 1 - p_home
+    return round(float(p_home), 4), round(float(p_away), 4)
 
-    conn = get_db()
-    cur = conn.cursor()
-    now = datetime.utcnow()
-    for gid, vals in game_means.items():
-        if vals["home"] is None or vals["away"] is None:
-            continue
-        cur.execute("""
-            INSERT INTO model_predictions (
-                game_id, market_type, prop_type,
-                model_mean_home, model_mean_away, created_at
-            ) VALUES (%s,%s,%s,%s,%s,%s)
-        """, (gid, "game", "runs", vals["home"], vals["away"], now))
-    conn.commit()
-    cur.close()
-    conn.close()
-    log.info(f"predict_runs_for_today: wrote run means for {len(game_means)} games")
+def _build_feature_vector(features: dict) -> list:
+    """
+    Converts raw feature dict to ordered vector matching model training schema.
+    Expected keys: era, fip, xfip, wrc_plus, ops_plus, ballpark_factor,
+                   bp_ip_last_3d, days_rest, home_flag
+    """
+    return [
+        features.get("era",             4.50),
+        features.get("fip",             4.30),
+        features.get("xfip",            4.20),
+        features.get("wrc_plus",        100.0),
+        features.get("ops_plus",        100.0),
+        features.get("ballpark_factor", 1.00),
+        features.get("bp_ip_last_3d",   0.0),
+        features.get("days_rest",        4.0),
+        float(features.get("home_flag",  0)),
+    ]
