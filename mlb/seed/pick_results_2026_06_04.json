@@ -1,0 +1,69 @@
+[
+  {
+    "date": "2026-06-04",
+    "leg": "IND +9.5 vs ATL",
+    "sport": "NBA",
+    "bet_type": "spread",
+    "line": 9.5,
+    "team": "IND",
+    "opponent": "ATL",
+    "result": "won",
+    "edge_tier": "strong_bet"
+  },
+  {
+    "date": "2026-06-04",
+    "leg": "PIT Winner vs HOU",
+    "sport": "MLB",
+    "bet_type": "moneyline",
+    "team": "PIT",
+    "opponent": "HOU",
+    "result": "won",
+    "edge_tier": "value_bet"
+  },
+  {
+    "date": "2026-06-04",
+    "leg": "TOR Under 0.5 runs 1st inning",
+    "sport": "MLB",
+    "bet_type": "team_total",
+    "team": "TOR",
+    "line": 0.5,
+    "direction": "under",
+    "period": "1st_inning",
+    "result": "won",
+    "edge_tier": "strong_bet"
+  },
+  {
+    "date": "2026-06-04",
+    "leg": "ATL Winner vs TOR",
+    "sport": "MLB",
+    "bet_type": "moneyline",
+    "team": "ATL",
+    "opponent": "TOR",
+    "result": "lost",
+    "edge_tier": "marginal_bet"
+  },
+  {
+    "date": "2026-06-04",
+    "leg": "VEG @ CAR Over 5.5 goals",
+    "sport": "NHL",
+    "bet_type": "total_goals",
+    "team_away": "VEG",
+    "team_home": "CAR",
+    "line": 5.5,
+    "direction": "over",
+    "result": "won",
+    "edge_tier": "value_bet"
+  },
+  {
+    "date": "2026-06-04",
+    "leg": "ATH @ CHC Over 9.5 total runs",
+    "sport": "MLB",
+    "bet_type": "total_runs",
+    "team_away": "ATH",
+    "team_home": "CHC",
+    "line": 9.5,
+    "direction": "over",
+    "result": "won",
+    "edge_tier": "strong_bet"
+  }
+]
