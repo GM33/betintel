@@ -14,39 +14,52 @@ BP_ELEVATED_IP   = 15.0
 BP_CRITICAL_MULT = 1.12
 BP_ELEVATED_MULT = 1.06
 
-# ── Confidence floor & favorite cliff (Jun 5) ───────────────────────────────
+# ── Confidence floor & favorite cliff (Jun 5) ────────────────────────────────
 CONFIDENCE_FLOOR    = 0.60
 FAVORITE_CLIFF_ODDS = -220
 MOMENTUM_WEIGHT     = 0.12
 
-# ── June 3 post-mortem constants ──────────────────────────────────────────────
+# ── K-prop gate & road blowout (Jun 3) ───────────────────────────────────────
 K_PROP_WIN_PROB_GATE   = 0.60
 ROAD_BLOWOUT_THRESHOLD = 5.0
 ROAD_BLOWOUT_BOOST     = 0.15
 
-# ── June 6 calibration: HIGH_VARIANCE_BAND widened ────────────────────────────
-# Jun 5 post-mortem: SF/CHC Under 11.0 (+21.4% edge) lost 21 runs.
-# ATH/HOU Over 9.0 (+37.5% edge) lost at 6 total runs.
-# Both had model delta > 1.0 vs the line but weren’t flagged HIGH_VARIANCE.
-# Widening band from 0.50 to 0.65 suppresses more uncertain totals to LEAN.
-HIGH_VARIANCE_BAND = 0.65   # was 0.50 — widened after Jun 5 total blowups
+# ── HIGH_VARIANCE band — widened Jun 6 round 1 ───────────────────────────────
+# Jun 5: SF/CHC Under (+21.4%) lost 21 runs; ATH/HOU Over (+37.5%) lost 6 runs.
+# Widened 0.50 → 0.65 to suppress more uncertain totals to LEAN.
+HIGH_VARIANCE_BAND = 0.65
 
-# ── June 6 calibration: away SP FIP edge minimum raised ──────────────────────
-# SEA ML lost Jun 5: Robbie Ray projected well but road SP outings carry
-# high single-game variance. Raising FIP edge floor for away starters
-# from 0.03 to 0.04 to require a stronger signal before CANDIDATE status.
-AWAY_SP_FIP_EDGE_MIN = 0.04   # was 0.03 — raised after SEA/Robbie Ray miss
+# ── Away SP FIP edge minimum — raised Jun 6 round 1 ──────────────────────────
+# SEA/Robbie Ray miss: road SP single-game variance too high at 0.03 floor.
+AWAY_SP_FIP_EDGE_MIN = 0.04
 
-# ── VALUE_DOG rule (June 5, updated Jun 6) ────────────────────────────────────
-# Jun 6 update: added VALUE_DOG_WIN_TREND_GATE after first live fire lost
-# (CIN 3, STL 10 on Jun 5). STL's underlying strength wasn’t captured by
-# season RD alone. Away team must now have a positive Last-3 run diff OR
-# confirmed sharp money signal to qualify. Prevents firing on cold road teams.
+# ── CANDIDATE edge floor — NEW Jun 6 round 2 ─────────────────────────────────
+# Jun 5 post-mortem: SD ML (+5.1%) lost 5-0, MIA ML (+5.8%) lost 6-0.
+# Both had thin edges that were directionally weak. Raising floor from 3% to
+# 5.5% — any pick below this threshold auto-downgrades to LEAN regardless
+# of other signals. Eliminates the lowest-conviction plays from CANDIDATE tier.
+CANDIDATE_EDGE_FLOOR = 0.055  # was EDGE_THRESHOLD (0.03) — raised after thin-edge losses
+
+# ── Undecided SP gate — NEW Jun 6 round 2 ────────────────────────────────────
+# MIA ML Jun 5: MIA had an undecided starter, model used average FIP.
+# Result: TB 6, MIA 0. Protocol already said TBD = skip, but wasn't enforced
+# in code. This constant gates the decision logic — if either SP is unconfirmed,
+# pick auto-downgrades to LEAN regardless of edge signal.
+UNDECIDED_SP_GATE = True  # auto-LEAN if sp_confirmed=False on either side
+
+# ── LOB variance flag — NEW Jun 6 round 2 ────────────────────────────────────
+# ATH/HOU Over Jun 5: ATH stranded 7 runners (LOB% ~78%), model projected
+# league-average sequencing. Teams with LOB% > 75% in last 3 games are
+# systematically underperforming their xR — reduce mu by 8% to compensate.
+LOB_VARIANCE_THRESHOLD = 0.75   # LOB% cutoff
+LOB_VARIANCE_MU_PENALTY = 0.08  # reduce mu_team by 8% when LOB% exceeds threshold
+
+# ── VALUE_DOG rule (Jun 5, win-trend gate added Jun 6 round 1) ───────────────
 VALUE_DOG_MIN_ODDS       = 120
 VALUE_DOG_MAX_HOME_RD    = 20.0
 VALUE_DOG_MAX_WRC_RANK   = 15
 VALUE_DOG_BOOST          = 0.04
-VALUE_DOG_WIN_TREND_GATE = True   # away team Last-3 RD must be >= 0 OR sharp signal present
+VALUE_DOG_WIN_TREND_GATE = True
 
 def get_db():
     return psycopg2.connect(DATABASE_URL)
@@ -82,10 +95,6 @@ def _fetch_momentum_delta(cur, team_id, date_str):
     return float(row[0]) if row and row[0] is not None else 0.0
 
 def _fetch_road_momentum(cur, team_id, date_str):
-    """
-    Returns the last-5 road-only run differential for a team.
-    MVP rule in 7-day backtest: 4 losses saved, 0 wins missed.
-    """
     cur.execute("""
         SELECT AVG(road_run_diff_last5) FROM team_momentum
         WHERE team_id=%s AND date<=%s
@@ -94,11 +103,37 @@ def _fetch_road_momentum(cur, team_id, date_str):
     row = cur.fetchone()
     return float(row[0]) if row and row[0] is not None else 0.0
 
+def _fetch_lob_pct(cur, team_id, date_str):
+    """
+    Returns the team's LOB% (runners left on base / runners on base) over
+    the last 3 games. Used by LOB_VARIANCE_FLAG to penalise teams that are
+    systematically stranding runners and underperforming their xR.
+    Returns None if data unavailable — flag does not fire without data.
+    """
+    cur.execute("""
+        SELECT lob_pct_last3 FROM team_batting_stats
+        WHERE team_id=%s AND date<=%s
+        ORDER BY date DESC LIMIT 1
+    """, (team_id, date_str))
+    row = cur.fetchone()
+    return float(row[0]) if row and row[0] is not None else None
+
+def _fetch_sp_confirmed(cur, game_id):
+    """
+    Returns (home_sp_confirmed, away_sp_confirmed) booleans.
+    False means starter is TBD/unconfirmed at pick generation time.
+    Used by UNDECIDED_SP_GATE — auto-LEAN if either is False.
+    """
+    cur.execute("""
+        SELECT home_sp_confirmed, away_sp_confirmed
+        FROM game_context WHERE game_id=%s
+    """, (game_id,))
+    row = cur.fetchone()
+    if not row:
+        return False, False
+    return bool(row[0]), bool(row[1])
+
 def _fetch_team_win_prob(cur, game_id, team_id):
-    """
-    Fetches pre-game model win probability for a specific team in a game.
-    Used by K-prop win-prob gate. Threshold: K_PROP_WIN_PROB_GATE = 0.60.
-    """
     cur.execute("""
         SELECT p_home, p_away, gc.home_team_id
         FROM model_predictions mp
@@ -130,7 +165,6 @@ def _has_secondary_signal(cur, game_id, side):
     if not row:
         return False
     line_moved_sharp, sharp_money_pct, sp_fip_edge = row
-    # Jun 6: away SP FIP edge minimum raised 0.03 → 0.04
     return (
         bool(line_moved_sharp) or
         (sharp_money_pct and sharp_money_pct >= 60) or
@@ -138,12 +172,6 @@ def _has_secondary_signal(cur, game_id, side):
     )
 
 def _fetch_value_dog_inputs(cur, home_team_id, away_team_id, date_str):
-    """
-    Fetches stats for VALUE_DOG evaluation:
-      - home team season run-differential
-      - away team wRC+ rank
-      - away team Last-3 run differential (for win-trend gate added Jun 6)
-    """
     cur.execute("""
         SELECT season_run_diff FROM team_season_stats
         WHERE team_id=%s AND season=EXTRACT(YEAR FROM %s::date)
@@ -158,7 +186,6 @@ def _fetch_value_dog_inputs(cur, home_team_id, away_team_id, date_str):
     row = cur.fetchone()
     away_wrc_rank = int(row[0]) if row and row[0] is not None else None
 
-    # Last-3 run diff for away team (win-trend gate)
     cur.execute("""
         SELECT run_diff_last5 FROM team_momentum
         WHERE team_id=%s AND date<=%s
@@ -206,7 +233,7 @@ def compute_k_edges():
         best_edge = max(edges) if edges else None
         best_conf = max(p_over, p_under)
 
-        # ── K-Prop Win-Probability Gate ───────────────────────────────────────────
+        # ── K-Prop Win-Probability Gate ───────────────────────────────────────
         k_over_gated = False
         if edge_over and edge_over == best_edge:
             team_win_prob = _fetch_team_win_prob(cur, row["game_id"], row["player_id"])
@@ -220,7 +247,7 @@ def compute_k_edges():
         if best_conf < CONFIDENCE_FLOOR or k_over_gated:
             decision = "LEAN"
         else:
-            decision = "CANDIDATE" if best_edge and best_edge >= EDGE_THRESHOLD else "NO BET"
+            decision = "CANDIDATE" if best_edge and best_edge >= CANDIDATE_EDGE_FLOOR else "NO BET"
 
         staking = None
         if decision == "CANDIDATE":
@@ -288,7 +315,7 @@ def compute_run_edges(gamma: float = 1.86):
         if not mu_h or not mu_a:
             continue
 
-        # ── TRAP GAME SUPPRESSION ───────────────────────────────────────────────────
+        # ── TRAP GAME SUPPRESSION ─────────────────────────────────────────────
         if row.get("is_trap"):
             update_cur.execute("""
                 UPDATE model_predictions SET card_decision='TRAP_SUPPRESSED'
@@ -297,7 +324,23 @@ def compute_run_edges(gamma: float = 1.86):
             log.warning(f"TRAP_SUPPRESSED: game_id={row['game_id']}")
             continue
 
-        # ── Bullpen Fatigue Multiplier ───────────────────────────────────────────────
+        # ── UNDECIDED SP GATE (Jun 6 round 2) ────────────────────────────────
+        # If either starting pitcher is unconfirmed, auto-LEAN.
+        # Prevents MIA-type losses where model used avg FIP for TBD starter.
+        if UNDECIDED_SP_GATE:
+            home_sp_ok, away_sp_ok = _fetch_sp_confirmed(cur, row["game_id"])
+            if not home_sp_ok or not away_sp_ok:
+                update_cur.execute("""
+                    UPDATE model_predictions SET card_decision='LEAN', staking_pct=0.005
+                    WHERE id=%s
+                """, (row["id"],))
+                log.warning(
+                    f"UNDECIDED_SP_GATE: game_id={row['game_id']} "
+                    f"home_sp_ok={home_sp_ok} away_sp_ok={away_sp_ok} -> LEAN"
+                )
+                continue
+
+        # ── Bullpen Fatigue Multiplier ────────────────────────────────────────
         bp_home = _fetch_bp_fatigue(cur, row["home_team_id"], today)
         bp_away = _fetch_bp_fatigue(cur, row["away_team_id"], today)
         if bp_home >= BP_CRITICAL_IP:
@@ -309,27 +352,38 @@ def compute_run_edges(gamma: float = 1.86):
         elif bp_away >= BP_ELEVATED_IP:
             mu_a *= BP_ELEVATED_MULT
 
-        # ── Momentum Delta Layer ─────────────────────────────────────────────────────
+        # ── LOB Variance Flag (Jun 6 round 2) ────────────────────────────────
+        # Teams with LOB% > 75% last 3 games are stranding runners and
+        # underperforming xR. Reduce their mu projection by 8%.
+        # ATH Jun 5: 7 LOB, model projected league-avg sequencing -> missed badly.
+        lob_home = _fetch_lob_pct(cur, row["home_team_id"], today)
+        lob_away = _fetch_lob_pct(cur, row["away_team_id"], today)
+        if lob_home is not None and lob_home > LOB_VARIANCE_THRESHOLD:
+            mu_h *= (1 - LOB_VARIANCE_MU_PENALTY)
+            log.info(f"LOB_VARIANCE_PENALTY home: team={row['home_team_id']} lob={lob_home:.3f} mu_h reduced")
+        if lob_away is not None and lob_away > LOB_VARIANCE_THRESHOLD:
+            mu_a *= (1 - LOB_VARIANCE_MU_PENALTY)
+            log.info(f"LOB_VARIANCE_PENALTY away: team={row['away_team_id']} lob={lob_away:.3f} mu_a reduced")
+
+        # ── Momentum Delta Layer ──────────────────────────────────────────────
         mom_home = _fetch_momentum_delta(cur, row["home_team_id"], today)
         mom_away = _fetch_momentum_delta(cur, row["away_team_id"], today)
         mu_h = mu_h * (1 + MOMENTUM_WEIGHT * np.tanh(mom_home / 5.0))
         mu_a = mu_a * (1 + MOMENTUM_WEIGHT * np.tanh(mom_away / 5.0))
 
-        # ── Road Blowout Defense ───────────────────────────────────────────────────
+        # ── Road Blowout Defense ──────────────────────────────────────────────
         road_mom_away = _fetch_road_momentum(cur, row["away_team_id"], today)
         if road_mom_away >= ROAD_BLOWOUT_THRESHOLD:
             mu_a = mu_a * (1 + ROAD_BLOWOUT_BOOST)
             log.info(
                 f"ROAD_BLOWOUT_BOOST: away_team={row['away_team_id']} "
-                f"road_run_diff={road_mom_away:.2f} -> mu_a boosted to {mu_a:.3f}"
+                f"road_run_diff={road_mom_away:.2f} -> mu_a={mu_a:.3f}"
             )
 
         p_home = float(mu_h**gamma / (mu_h**gamma + mu_a**gamma))
         p_away = float(1 - p_home)
 
-        # ── VALUE_DOG Rule (Jun 5, gate added Jun 6) ─────────────────────────────
-        # Jun 6 gate: away team Last-3 RD must be >= 0 (not cold) OR sharp
-        # signal present. Prevents firing on road dogs in bad recent form.
+        # ── VALUE_DOG Rule ────────────────────────────────────────────────────
         value_dog_triggered = False
         away_odds = row["away_odds"]
         if away_odds is not None and away_odds >= VALUE_DOG_MIN_ODDS:
@@ -357,7 +411,7 @@ def compute_run_edges(gamma: float = 1.86):
                 )
             elif away_odds >= VALUE_DOG_MIN_ODDS and not away_trend_ok:
                 log.info(
-                    f"VALUE_DOG_BLOCKED (cold road team): game_id={row['game_id']} "
+                    f"VALUE_DOG_BLOCKED: game_id={row['game_id']} "
                     f"away_last3_rd={away_last3_rd} has_sharp={has_sharp}"
                 )
 
@@ -386,7 +440,7 @@ def compute_run_edges(gamma: float = 1.86):
         edges     = [e for e in [edge_home, edge_away, edge_over, edge_under] if e is not None]
         best_edge = max(edges) if edges else None
 
-        # ── HIGH_VARIANCE Suppressor (widened to 0.65 Jun 6) ──────────────────────
+        # ── HIGH_VARIANCE Suppressor ──────────────────────────────────────────
         high_variance = (
             total_line is not None and
             abs(model_total - float(total_line)) <= HIGH_VARIANCE_BAND
@@ -394,11 +448,11 @@ def compute_run_edges(gamma: float = 1.86):
         if high_variance:
             log.info(
                 f"HIGH_VARIANCE: game_id={row['game_id']} "
-                f"model_total={model_total:.2f} market_line={total_line} "
+                f"model_total={model_total:.2f} line={total_line} "
                 f"delta={abs(model_total - float(total_line)):.2f}"
             )
 
-        # ── Confidence floor & Favorite Cliff ──────────────────────────────────────
+        # ── Decision: confidence floor → cliff → edge floor ───────────────────
         winning_side = "home" if p_home >= p_away else "away"
         winning_conf = max(p_home, p_away)
         winning_odds = row["home_odds"] if winning_side == "home" else row["away_odds"]
@@ -407,13 +461,20 @@ def compute_run_edges(gamma: float = 1.86):
             decision = "LEAN"
         elif winning_odds is not None and winning_odds <= FAVORITE_CLIFF_ODDS:
             has_signal = _has_secondary_signal(cur, row["game_id"], winning_side)
-            if not has_signal:
-                decision = "LEAN"
-                log.warning(f"FAVORITE_CLIFF downgrade: game_id={row['game_id']} side={winning_side} odds={winning_odds}")
-            else:
-                decision = "CANDIDATE" if best_edge and best_edge >= EDGE_THRESHOLD else "NO BET"
+            decision = "CANDIDATE" if has_signal and best_edge and best_edge >= CANDIDATE_EDGE_FLOOR else "LEAN"
+            if decision == "LEAN":
+                log.warning(f"FAVORITE_CLIFF: game_id={row['game_id']} side={winning_side} odds={winning_odds}")
+        elif best_edge and best_edge < CANDIDATE_EDGE_FLOOR:
+            # ── CANDIDATE_EDGE_FLOOR gate (Jun 6 round 2) ─────────────────────
+            # SD ML (+5.1%) and MIA ML (+5.8%) both lost Jun 5 as thin picks.
+            # Any pick below 5.5% edge auto-downgrades to LEAN.
+            decision = "LEAN"
+            log.info(
+                f"EDGE_FLOOR_DOWNGRADE: game_id={row['game_id']} "
+                f"best_edge={best_edge:.4f} < {CANDIDATE_EDGE_FLOOR} -> LEAN"
+            )
         else:
-            decision = "CANDIDATE" if best_edge and best_edge >= EDGE_THRESHOLD else "NO BET"
+            decision = "CANDIDATE" if best_edge and best_edge >= CANDIDATE_EDGE_FLOOR else "NO BET"
 
         staking_override = 0.005 if high_variance and decision == "CANDIDATE" else None
 
