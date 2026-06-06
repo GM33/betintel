@@ -1,22 +1,59 @@
 {
-  "version": "2026-06-05",
-  "calibrated_from": "2026-06-04",
-  "sample_size": 6,
-  "overall_win_rate": 0.833,
+  "version": "2026-06-06",
+  "calibrated_from": "2026-06-05",
+  "sample_size": 17,
+  "overall_win_rate": 0.471,
   "tier_weights": {
-    "strong_bet":   {"baseline_edge": 0.06, "weight": 1.10, "adj": +0.10, "rationale": "3/3 (100%) on Jun 4 — boosted"},
-    "value_bet":    {"baseline_edge": 0.03, "weight": 0.80, "adj": +0.05, "rationale": "2/2 (100%) on Jun 4 — modest boost"},
-    "marginal_bet": {"baseline_edge": 0.01, "weight": 0.45, "adj": -0.05, "rationale": "0/1 (0%) on Jun 4 — penalised, avoid"}
+    "strong_bet": {
+      "baseline_edge": 0.06,
+      "weight": 0.90,
+      "adj": -0.08,
+      "rationale": "Jun 5: ATH/HOU Over (+37.5%) lost 6-0, SF/CHC Under (+21.4%) lost 21-0. Both 3-sigma outliers but xERA model overconfident on game totals. Weight reduced from 1.10 to 0.90 pending 5-game stabilisation."
+    },
+    "value_bet": {
+      "baseline_edge": 0.03,
+      "weight": 0.75,
+      "adj": -0.03,
+      "rationale": "Jun 5: 3/6 (50%) value picks. Road ML value plays (CIN VALUE_DOG, SEA, SD, MIA) all lost. Slight penalty from 0.80 to 0.75. Monitor road ML subset specifically."
+    },
+    "marginal_bet": {
+      "baseline_edge": 0.01,
+      "weight": 0.30,
+      "adj": -0.05,
+      "rationale": "0/4 all-time. Suppressed to near-zero — marginal picks now output as LEAN only, no full CANDIDATE stake."
+    }
   },
   "sport_performance": {
-    "MLB": {"win_rate": 0.75, "note": "primary sport"},
-    "NBA": {"win_rate": 1.00, "note": "single sample"},
-    "NHL": {"win_rate": 1.00, "note": "single sample"}
+    "MLB": {"win_rate": 0.400, "note": "Jun 5 rough night dragged from 0.75. Game totals sub-model needs variance padding."},
+    "NBA": {"win_rate": 1.000, "note": "single sample — insufficient"},
+    "NHL": {"win_rate": 1.000, "note": "single sample — insufficient"}
   },
   "bet_type_performance": {
-    "moneyline":  {"win_rate": 0.50, "note": "marginal pick dragging — filter to strong/value only"},
-    "team_total": {"win_rate": 1.00, "note": "1st inning unders strong signal"},
-    "total_runs": {"win_rate": 1.00, "note": "game totals strong"},
-    "spread":     {"win_rate": 1.00, "note": "single sample"}
+    "moneyline": {
+      "win_rate": 0.333,
+      "note": "Dragged by road dogs Jun 5. VALUE_DOG 0/1. Road ML picks now require CANDIDATE + secondary signal OR VALUE_DOG + 3-game win trend to qualify."
+    },
+    "total_runs": {
+      "win_rate": 0.500,
+      "note": "MIL/COL Over hit (16 runs), ATH/HOU Over and SF/CHC Under both missed badly. HIGH_VARIANCE_BAND widening from 0.50 to 0.65 — captures more uncertain totals games."
+    },
+    "team_total": {"win_rate": 1.000, "note": "1st inning unders holding"},
+    "total_goals": {"win_rate": 1.000, "note": "NHL single sample"},
+    "spread":     {"win_rate": 1.000, "note": "single sample"}
+  },
+  "targeted_adjustments_jun6": {
+    "HIGH_VARIANCE_BAND": {
+      "old": 0.50,
+      "new": 0.65,
+      "reason": "SF/CHC and ATH/HOU both had model Δ > 1.0 but were classified as clean. Wider band suppresses more uncertain total picks to LEAN."
+    },
+    "away_sp_variance_flag": {
+      "new": true,
+      "reason": "SEA ML lost: Robbie Ray projected well but road SP outings have high single-game variance. Away starter picks now require FIP edge >= 0.04 (was 0.03) to qualify as CANDIDATE."
+    },
+    "value_dog_road_ml_gate": {
+      "new": "require 3-game win trend OR sharp money signal on VALUE_DOG fires",
+      "reason": "First live VALUE_DOG fire (CIN) lost 3-10. STL had underlying strength not captured by season RD alone. Adding win-trend gate as secondary condition."
+    }
   }
 }

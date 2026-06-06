@@ -1,80 +1,107 @@
 {
-  "last_updated": "2026-06-05T04:21:54.622519",
-  "total_picks": 6,
-  "total_wins": 5,
+  "last_updated": "2026-06-06T05:49:00.000000",
+  "total_picks": 17,
+  "total_wins": 8,
   "by_tier": {
     "strong_bet": {
-      "picks": 3,
+      "picks": 5,
       "wins": 3,
-      "win_rate": 1.0
+      "win_rate": 0.600
     },
     "value_bet": {
-      "picks": 2,
-      "wins": 2,
-      "win_rate": 1.0
+      "picks": 8,
+      "wins": 5,
+      "win_rate": 0.625
     },
     "marginal_bet": {
-      "picks": 1,
+      "picks": 4,
       "wins": 0,
-      "win_rate": 0.0
+      "win_rate": 0.000
     }
   },
   "by_sport": {
     "NBA": {
       "picks": 1,
       "wins": 1,
-      "win_rate": 1.0
+      "win_rate": 1.00
     },
     "MLB": {
-      "picks": 4,
-      "wins": 3,
-      "win_rate": 0.75
+      "picks": 15,
+      "wins": 6,
+      "win_rate": 0.400
     },
     "NHL": {
       "picks": 1,
       "wins": 1,
-      "win_rate": 1.0
+      "win_rate": 1.00
     }
   },
   "by_bet_type": {
-    "spread": {
-      "picks": 1,
-      "wins": 1,
-      "win_rate": 1.0
-    },
     "moneyline": {
-      "picks": 2,
-      "wins": 1,
-      "win_rate": 0.5
+      "picks": 9,
+      "wins": 3,
+      "win_rate": 0.333
+    },
+    "total_runs": {
+      "picks": 4,
+      "wins": 2,
+      "win_rate": 0.500
     },
     "team_total": {
       "picks": 1,
       "wins": 1,
-      "win_rate": 1.0
+      "win_rate": 1.000
     },
     "total_goals": {
       "picks": 1,
       "wins": 1,
-      "win_rate": 1.0
+      "win_rate": 1.000
     },
-    "total_runs": {
+    "spread": {
       "picks": 1,
       "wins": 1,
-      "win_rate": 1.0
+      "win_rate": 1.000
     }
+  },
+  "june5_results": {
+    "date": "2026-06-05",
+    "picks_graded": 11,
+    "wins": 3,
+    "losses": 8,
+    "win_rate": 0.273,
+    "winners": ["PHI ML", "BOS ML", "MIL/COL Over 11"],
+    "losers": ["CHC ML", "SEA ML", "CIN ML (VALUE_DOG)", "SD ML", "MIA ML", "ARI ML", "ATH/HOU Over 9.0", "SF/CHC Under 11.0"],
+    "notable": {
+      "SF_CHC_blowup": "SF 18, CHC 3 — model projected under 11.0 (+21.4% edge). 21 total runs, 3-sigma outlier.",
+      "ATH_HOU_blowup": "ATH 1, HOU 5 — model projected over 9.0 (+37.5% edge). 6 total runs. xERA overfit to season avg vs dominant single-game outing.",
+      "VALUE_DOG_first_fire": "CIN ML — STL 10, CIN 3. First live VALUE_DOG fire = L. Sample: 1/1 fires, 0 wins. Monitor.",
+      "BOS_road_boost": "BOS 5, NYY 3. Road blowout boost rule confirmed again. 2nd consecutive correct fire.",
+      "MIL_COL_over": "9+7=16 runs in 10 innings. Coors + BP_CRITICAL model correct."
+    }
+  },
+  "rule_performance": {
+    "road_blowout_defense": {"fires": 6, "correct": 6, "win_rate": 1.00, "status": "CONFIRMED"},
+    "favorite_cliff": {"fires": 8, "correct": 6, "win_rate": 0.75, "status": "HOLDING"},
+    "value_dog": {"fires": 1, "correct": 0, "win_rate": 0.00, "status": "MONITORING — 29 more fires needed for Jul 5 review"},
+    "k_prop_gate": {"fires": 4, "correct": 3, "win_rate": 0.75, "status": "HOLDING"},
+    "high_variance_suppressor": {"fires": 5, "correct": 4, "win_rate": 0.80, "status": "CONFIRMED"},
+    "trap_suppression": {"fires": 2, "correct": 2, "win_rate": 1.00, "status": "CONFIRMED"}
   },
   "recommended_weight_adjustments": {
     "strong_bet": {
-      "status": "insufficient_sample",
-      "picks": 3
+      "status": "PENALISE",
+      "rationale": "Jun 5: 0/2 strong picks. ATH/HOU Over (+37.5%) and SF/CHC Under (+21.4%) both lost badly. xERA overconfidence on game totals.",
+      "adj": -0.08
     },
     "value_bet": {
-      "status": "insufficient_sample",
-      "picks": 2
+      "status": "SLIGHT_PENALISE",
+      "rationale": "3/6 value picks Jun 5 (50%). Road MLs underperformed. VALUE_DOG first fire lost.",
+      "adj": -0.03
     },
     "marginal_bet": {
-      "status": "insufficient_sample",
-      "picks": 1
+      "status": "SUPPRESS",
+      "rationale": "0/4 all-time marginal picks. Suppressing to LEAN-only tier.",
+      "adj": -0.05
     }
   }
 }
