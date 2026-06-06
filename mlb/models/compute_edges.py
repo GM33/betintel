@@ -1,8 +1,10 @@
+import os
 import psycopg2
 import psycopg2.extras
 import numpy as np
 from scipy.stats import poisson
 from mlb.config import DATABASE_URL, EDGE_THRESHOLD, KELLY_FRACTION, MAX_STAKE_PCT
+from mlb.features.weather_gate import get_weather_adjustment
 from datetime import datetime
 import logging
 
@@ -196,6 +198,18 @@ def _fetch_value_dog_inputs(cur, home_team_id, away_team_id, date_str):
 
     return home_rd, away_wrc_rank, away_last3_rd
 
+def _fetch_home_team_code(cur, home_team_id):
+    """
+    Resolve numeric home_team_id to the 2-3 char team code (e.g. 'CHC', 'NYY')
+    needed to look up stadium coordinates in weather_gate.BALLPARK_COORDS.
+    Returns None if team not found.
+    """
+    cur.execute("""
+        SELECT team_code FROM teams WHERE team_id=%s
+    """, (home_team_id,))
+    row = cur.fetchone()
+    return row[0] if row else None
+
 def compute_k_edges():
     conn = get_db()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -325,8 +339,6 @@ def compute_run_edges(gamma: float = 1.86):
             continue
 
         # ── UNDECIDED SP GATE (Jun 6 round 2) ────────────────────────────────
-        # If either starting pitcher is unconfirmed, auto-LEAN.
-        # Prevents MIA-type losses where model used avg FIP for TBD starter.
         if UNDECIDED_SP_GATE:
             home_sp_ok, away_sp_ok = _fetch_sp_confirmed(cur, row["game_id"])
             if not home_sp_ok or not away_sp_ok:
@@ -353,9 +365,6 @@ def compute_run_edges(gamma: float = 1.86):
             mu_a *= BP_ELEVATED_MULT
 
         # ── LOB Variance Flag (Jun 6 round 2) ────────────────────────────────
-        # Teams with LOB% > 75% last 3 games are stranding runners and
-        # underperforming xR. Reduce their mu projection by 8%.
-        # ATH Jun 5: 7 LOB, model projected league-avg sequencing -> missed badly.
         lob_home = _fetch_lob_pct(cur, row["home_team_id"], today)
         lob_away = _fetch_lob_pct(cur, row["away_team_id"], today)
         if lob_home is not None and lob_home > LOB_VARIANCE_THRESHOLD:
@@ -379,6 +388,46 @@ def compute_run_edges(gamma: float = 1.86):
                 f"ROAD_BLOWOUT_BOOST: away_team={row['away_team_id']} "
                 f"road_run_diff={road_mom_away:.2f} -> mu_a={mu_a:.3f}"
             )
+
+        # ── Weather Gate (Jun 6 round 3) ──────────────────────────────────────
+        # Pull OpenWeather One Call forecast for the home park's lat/lon.
+        # Domed parks are automatically skipped inside get_weather_adjustment().
+        # Rain gate (pop >= 0.45) auto-LEANs the game and skips probability calc.
+        # Wind and temp adjust both mu_h and mu_a via a run-environment multiplier.
+        home_team_code = _fetch_home_team_code(cur, row["home_team_id"])
+        wx_mult, rain_gate, wx_meta = get_weather_adjustment(
+            home_team_code, game_hour_idx=0
+        )
+
+        if rain_gate:
+            update_cur.execute("""
+                UPDATE model_predictions SET
+                    card_decision='LEAN',
+                    staking_pct=0.005,
+                    weather_temp_f=%s,
+                    weather_wind_mph=%s,
+                    weather_wind_deg=%s,
+                    weather_rain_prob=%s,
+                    weather_multiplier=%s,
+                    weather_gate_triggered=TRUE
+                WHERE id=%s
+            """, (
+                wx_meta.get("temp_f"),
+                wx_meta.get("wind_mph"),
+                wx_meta.get("wind_deg"),
+                wx_meta.get("rain_prob"),
+                wx_mult,
+                row["id"],
+            ))
+            log.warning(
+                f"WEATHER_RAIN_GATE: game_id={row['game_id']} "
+                f"park={home_team_code} rain_prob={wx_meta.get('rain_prob')} "
+                f"temp_f={wx_meta.get('temp_f')} wind_mph={wx_meta.get('wind_mph')}"
+            )
+            continue
+
+        mu_h *= wx_mult
+        mu_a *= wx_mult
 
         p_home = float(mu_h**gamma / (mu_h**gamma + mu_a**gamma))
         p_away = float(1 - p_home)
@@ -465,9 +514,6 @@ def compute_run_edges(gamma: float = 1.86):
             if decision == "LEAN":
                 log.warning(f"FAVORITE_CLIFF: game_id={row['game_id']} side={winning_side} odds={winning_odds}")
         elif best_edge and best_edge < CANDIDATE_EDGE_FLOOR:
-            # ── CANDIDATE_EDGE_FLOOR gate (Jun 6 round 2) ─────────────────────
-            # SD ML (+5.1%) and MIA ML (+5.8%) both lost Jun 5 as thin picks.
-            # Any pick below 5.5% edge auto-downgrades to LEAN.
             decision = "LEAN"
             log.info(
                 f"EDGE_FLOOR_DOWNGRADE: game_id={row['game_id']} "
@@ -487,7 +533,13 @@ def compute_run_edges(gamma: float = 1.86):
                 card_decision=%s,
                 staking_pct=COALESCE(%s, staking_pct),
                 high_variance=%s,
-                value_dog=%s
+                value_dog=%s,
+                weather_temp_f=%s,
+                weather_wind_mph=%s,
+                weather_wind_deg=%s,
+                weather_rain_prob=%s,
+                weather_multiplier=%s,
+                weather_gate_triggered=FALSE
             WHERE id=%s
         """, (
             p_home, p_away, p_over_tot, p_under_tot,
@@ -498,6 +550,11 @@ def compute_run_edges(gamma: float = 1.86):
             staking_override,
             high_variance,
             value_dog_triggered,
+            wx_meta.get("temp_f"),
+            wx_meta.get("wind_mph"),
+            wx_meta.get("wind_deg"),
+            wx_meta.get("rain_prob"),
+            wx_mult,
             row["id"]
         ))
 
