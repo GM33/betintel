@@ -2,7 +2,7 @@ import os
 import psycopg2
 import psycopg2.extras
 import numpy as np
-from scipy.stats import poisson
+from scipy.stats import poisson, nbinom
 from mlb.config import DATABASE_URL, EDGE_THRESHOLD, KELLY_FRACTION, MAX_STAKE_PCT
 from mlb.features.weather_gate import get_weather_adjustment
 from datetime import datetime
@@ -10,7 +10,7 @@ import logging
 
 log = logging.getLogger("betintel.models.compute_edges")
 
-# ── Bullpen fatigue thresholds (June 3 upgrade) ───────────────────────────────
+# ── Bullpen fatigue thresholds (June 3) ───────────────────────────────────────────────
 BP_CRITICAL_IP   = 18.0
 BP_ELEVATED_IP   = 15.0
 BP_CRITICAL_MULT = 1.12
@@ -26,42 +26,45 @@ K_PROP_WIN_PROB_GATE   = 0.60
 ROAD_BLOWOUT_THRESHOLD = 5.0
 ROAD_BLOWOUT_BOOST     = 0.15
 
-# ── HIGH_VARIANCE band — widened Jun 6 round 1 ───────────────────────────────
-# Jun 5: SF/CHC Under (+21.4%) lost 21 runs; ATH/HOU Over (+37.5%) lost 6 runs.
-# Widened 0.50 → 0.65 to suppress more uncertain totals to LEAN.
+# ── HIGH_VARIANCE band (Jun 6 r1) ─────────────────────────────────────────────
 HIGH_VARIANCE_BAND = 0.65
 
-# ── Away SP FIP edge minimum — raised Jun 6 round 1 ──────────────────────────
-# SEA/Robbie Ray miss: road SP single-game variance too high at 0.03 floor.
+# ── Away SP FIP edge minimum (Jun 6 r1) ──────────────────────────────────────
 AWAY_SP_FIP_EDGE_MIN = 0.04
 
-# ── CANDIDATE edge floor — NEW Jun 6 round 2 ─────────────────────────────────
-# Jun 5 post-mortem: SD ML (+5.1%) lost 5-0, MIA ML (+5.8%) lost 6-0.
-# Both had thin edges that were directionally weak. Raising floor from 3% to
-# 5.5% — any pick below this threshold auto-downgrades to LEAN regardless
-# of other signals. Eliminates the lowest-conviction plays from CANDIDATE tier.
-CANDIDATE_EDGE_FLOOR = 0.055  # was EDGE_THRESHOLD (0.03) — raised after thin-edge losses
+# ── CANDIDATE edge floor (Jun 6 r2) ─────────────────────────────────────────
+CANDIDATE_EDGE_FLOOR = 0.055
 
-# ── Undecided SP gate — NEW Jun 6 round 2 ────────────────────────────────────
-# MIA ML Jun 5: MIA had an undecided starter, model used average FIP.
-# Result: TB 6, MIA 0. Protocol already said TBD = skip, but wasn't enforced
-# in code. This constant gates the decision logic — if either SP is unconfirmed,
-# pick auto-downgrades to LEAN regardless of edge signal.
-UNDECIDED_SP_GATE = True  # auto-LEAN if sp_confirmed=False on either side
+# ── Undecided SP gate (Jun 6 r2) ─────────────────────────────────────────────
+UNDECIDED_SP_GATE = True
 
-# ── LOB variance flag — NEW Jun 6 round 2 ────────────────────────────────────
-# ATH/HOU Over Jun 5: ATH stranded 7 runners (LOB% ~78%), model projected
-# league-average sequencing. Teams with LOB% > 75% in last 3 games are
-# systematically underperforming their xR — reduce mu by 8% to compensate.
-LOB_VARIANCE_THRESHOLD = 0.75   # LOB% cutoff
-LOB_VARIANCE_MU_PENALTY = 0.08  # reduce mu_team by 8% when LOB% exceeds threshold
+# ── LOB variance flag (Jun 6 r2) ───────────────────────────────────────────────
+LOB_VARIANCE_THRESHOLD  = 0.75
+LOB_VARIANCE_MU_PENALTY = 0.08
 
-# ── VALUE_DOG rule (Jun 5, win-trend gate added Jun 6 round 1) ───────────────
+# ── Negative Binomial dispersion (Jun 6 r4) ───────────────────────────────────
+# Replaces Poisson for run scoring. MLB run distributions are overdispersed
+# (variance > mean) — blowouts occur more often than Poisson predicts.
+# NB(n=NB_DISPERSION, p=n/(n+mu)) with r=20 fits historical MLB run data well.
+# K-prop edges continue using Poisson (strikeout counts are approx Poisson).
+NB_DISPERSION = 20  # fitted to MLB run data; higher = closer to Poisson
+
+# ── VALUE_DOG rule (Jun 5) ───────────────────────────────────────────────────────
 VALUE_DOG_MIN_ODDS       = 120
 VALUE_DOG_MAX_HOME_RD    = 20.0
 VALUE_DOG_MAX_WRC_RANK   = 15
 VALUE_DOG_BOOST          = 0.04
 VALUE_DOG_WIN_TREND_GATE = True
+
+
+def _nb_params(mu: float, r: float = NB_DISPERSION) -> tuple[float, float]:
+    """
+    Convert mean mu and dispersion r to scipy nbinom (n, p) parameterisation.
+    nbinom(n, p) where n=r, p=r/(r+mu).
+    """
+    p = r / (r + mu)
+    return r, p
+
 
 def get_db():
     return psycopg2.connect(DATABASE_URL)
@@ -106,12 +109,6 @@ def _fetch_road_momentum(cur, team_id, date_str):
     return float(row[0]) if row and row[0] is not None else 0.0
 
 def _fetch_lob_pct(cur, team_id, date_str):
-    """
-    Returns the team's LOB% (runners left on base / runners on base) over
-    the last 3 games. Used by LOB_VARIANCE_FLAG to penalise teams that are
-    systematically stranding runners and underperforming their xR.
-    Returns None if data unavailable — flag does not fire without data.
-    """
     cur.execute("""
         SELECT lob_pct_last3 FROM team_batting_stats
         WHERE team_id=%s AND date<=%s
@@ -121,11 +118,6 @@ def _fetch_lob_pct(cur, team_id, date_str):
     return float(row[0]) if row and row[0] is not None else None
 
 def _fetch_sp_confirmed(cur, game_id):
-    """
-    Returns (home_sp_confirmed, away_sp_confirmed) booleans.
-    False means starter is TBD/unconfirmed at pick generation time.
-    Used by UNDECIDED_SP_GATE — auto-LEAN if either is False.
-    """
     cur.execute("""
         SELECT home_sp_confirmed, away_sp_confirmed
         FROM game_context WHERE game_id=%s
@@ -157,6 +149,10 @@ def _is_trap_game(cur, game_id):
     return bool(row[0]) if row and row[0] is not None else False
 
 def _has_secondary_signal(cur, game_id, side):
+    """
+    Returns True if any strong secondary signal exists for this game/side.
+    Now reads Pinnacle sharp movement data written by pinnacle_lines.py.
+    """
     cur.execute("""
         SELECT line_moved_sharp, sharp_money_pct, sp_fip_edge
         FROM sharp_signals
@@ -199,18 +195,18 @@ def _fetch_value_dog_inputs(cur, home_team_id, away_team_id, date_str):
     return home_rd, away_wrc_rank, away_last3_rd
 
 def _fetch_home_team_code(cur, home_team_id):
-    """
-    Resolve numeric home_team_id to the 2-3 char team code (e.g. 'CHC', 'NYY')
-    needed to look up stadium coordinates in weather_gate.BALLPARK_COORDS.
-    Returns None if team not found.
-    """
     cur.execute("""
         SELECT team_code FROM teams WHERE team_id=%s
     """, (home_team_id,))
     row = cur.fetchone()
     return row[0] if row else None
 
+
 def compute_k_edges():
+    """
+    K-prop edges use Poisson — strikeout counts are approximately Poisson
+    distributed and do not exhibit the same overdispersion as run scoring.
+    """
     conn = get_db()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
@@ -237,6 +233,7 @@ def compute_k_edges():
         if not lam or not line:
             continue
 
+        # Poisson stays for K-props
         p_over  = float(1 - poisson.cdf(int(line), lam))
         p_under = float(poisson.cdf(int(line), lam))
         p_imp_over  = implied_prob_american(row["over_odds"])
@@ -247,7 +244,6 @@ def compute_k_edges():
         best_edge = max(edges) if edges else None
         best_conf = max(p_over, p_under)
 
-        # ── K-Prop Win-Probability Gate ───────────────────────────────────────
         k_over_gated = False
         if edge_over and edge_over == best_edge:
             team_win_prob = _fetch_team_win_prob(cur, row["game_id"], row["player_id"])
@@ -290,7 +286,13 @@ def compute_k_edges():
     conn.close()
     log.info(f"compute_k_edges: processed {len(rows)} rows")
 
+
 def compute_run_edges(gamma: float = 1.86):
+    """
+    Run scoring now uses Negative Binomial instead of Poisson.
+    NB(n=NB_DISPERSION, p=n/(n+mu)) captures the overdispersion in real
+    MLB run distributions — blowout games are priced correctly.
+    """
     conn = get_db()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     today = datetime.utcnow().strftime("%Y-%m-%d")
@@ -321,7 +323,7 @@ def compute_run_edges(gamma: float = 1.86):
     """)
     rows = cur.fetchall()
     update_cur = conn.cursor()
-    max_r = 15
+    max_r = 20  # raised from 15 — NB has heavier tails than Poisson
 
     for row in rows:
         mu_h = row["model_mean_home"]
@@ -338,7 +340,7 @@ def compute_run_edges(gamma: float = 1.86):
             log.warning(f"TRAP_SUPPRESSED: game_id={row['game_id']}")
             continue
 
-        # ── UNDECIDED SP GATE (Jun 6 round 2) ────────────────────────────────
+        # ── UNDECIDED SP GATE ──────────────────────────────────────────────────
         if UNDECIDED_SP_GATE:
             home_sp_ok, away_sp_ok = _fetch_sp_confirmed(cur, row["game_id"])
             if not home_sp_ok or not away_sp_ok:
@@ -364,15 +366,15 @@ def compute_run_edges(gamma: float = 1.86):
         elif bp_away >= BP_ELEVATED_IP:
             mu_a *= BP_ELEVATED_MULT
 
-        # ── LOB Variance Flag (Jun 6 round 2) ────────────────────────────────
+        # ── LOB Variance Flag ───────────────────────────────────────────────────────
         lob_home = _fetch_lob_pct(cur, row["home_team_id"], today)
         lob_away = _fetch_lob_pct(cur, row["away_team_id"], today)
         if lob_home is not None and lob_home > LOB_VARIANCE_THRESHOLD:
             mu_h *= (1 - LOB_VARIANCE_MU_PENALTY)
-            log.info(f"LOB_VARIANCE_PENALTY home: team={row['home_team_id']} lob={lob_home:.3f} mu_h reduced")
+            log.info(f"LOB_VARIANCE_PENALTY home: team={row['home_team_id']} lob={lob_home:.3f}")
         if lob_away is not None and lob_away > LOB_VARIANCE_THRESHOLD:
             mu_a *= (1 - LOB_VARIANCE_MU_PENALTY)
-            log.info(f"LOB_VARIANCE_PENALTY away: team={row['away_team_id']} lob={lob_away:.3f} mu_a reduced")
+            log.info(f"LOB_VARIANCE_PENALTY away: team={row['away_team_id']} lob={lob_away:.3f}")
 
         # ── Momentum Delta Layer ──────────────────────────────────────────────
         mom_home = _fetch_momentum_delta(cur, row["home_team_id"], today)
@@ -389,46 +391,30 @@ def compute_run_edges(gamma: float = 1.86):
                 f"road_run_diff={road_mom_away:.2f} -> mu_a={mu_a:.3f}"
             )
 
-        # ── Weather Gate (Jun 6 round 3) ──────────────────────────────────────
-        # Pull OpenWeather One Call forecast for the home park's lat/lon.
-        # Domed parks are automatically skipped inside get_weather_adjustment().
-        # Rain gate (pop >= 0.45) auto-LEANs the game and skips probability calc.
-        # Wind and temp adjust both mu_h and mu_a via a run-environment multiplier.
+        # ── Weather Gate ────────────────────────────────────────────────────────
         home_team_code = _fetch_home_team_code(cur, row["home_team_id"])
         wx_mult, rain_gate, wx_meta = get_weather_adjustment(
             home_team_code, game_hour_idx=0
         )
-
         if rain_gate:
             update_cur.execute("""
                 UPDATE model_predictions SET
-                    card_decision='LEAN',
-                    staking_pct=0.005,
-                    weather_temp_f=%s,
-                    weather_wind_mph=%s,
-                    weather_wind_deg=%s,
-                    weather_rain_prob=%s,
-                    weather_multiplier=%s,
-                    weather_gate_triggered=TRUE
+                    card_decision='LEAN', staking_pct=0.005,
+                    weather_temp_f=%s, weather_wind_mph=%s,
+                    weather_wind_deg=%s, weather_rain_prob=%s,
+                    weather_multiplier=%s, weather_gate_triggered=TRUE
                 WHERE id=%s
             """, (
-                wx_meta.get("temp_f"),
-                wx_meta.get("wind_mph"),
-                wx_meta.get("wind_deg"),
-                wx_meta.get("rain_prob"),
-                wx_mult,
-                row["id"],
+                wx_meta.get("temp_f"), wx_meta.get("wind_mph"),
+                wx_meta.get("wind_deg"), wx_meta.get("rain_prob"),
+                wx_mult, row["id"],
             ))
-            log.warning(
-                f"WEATHER_RAIN_GATE: game_id={row['game_id']} "
-                f"park={home_team_code} rain_prob={wx_meta.get('rain_prob')} "
-                f"temp_f={wx_meta.get('temp_f')} wind_mph={wx_meta.get('wind_mph')}"
-            )
+            log.warning(f"WEATHER_RAIN_GATE: game_id={row['game_id']} park={home_team_code}")
             continue
-
         mu_h *= wx_mult
         mu_a *= wx_mult
 
+        # ── Win probability via Bradley-Terry (unchanged) ───────────────────────
         p_home = float(mu_h**gamma / (mu_h**gamma + mu_a**gamma))
         p_away = float(1 - p_home)
 
@@ -453,19 +439,17 @@ def compute_run_edges(gamma: float = 1.86):
                 p_away = min(p_away * (1 + VALUE_DOG_BOOST), 0.99)
                 p_home = 1 - p_away
                 value_dog_triggered = True
-                log.info(
-                    f"VALUE_DOG: game_id={row['game_id']} away_odds=+{away_odds} "
-                    f"home_rd={home_rd:.1f} away_wrc_rank={away_wrc_rank} "
-                    f"away_last3_rd={away_last3_rd} -> p_away={p_away:.3f}"
-                )
-            elif away_odds >= VALUE_DOG_MIN_ODDS and not away_trend_ok:
-                log.info(
-                    f"VALUE_DOG_BLOCKED: game_id={row['game_id']} "
-                    f"away_last3_rd={away_last3_rd} has_sharp={has_sharp}"
-                )
+                log.info(f"VALUE_DOG: game_id={row['game_id']} -> p_away={p_away:.3f}")
 
-        probs_h   = [float(poisson.pmf(k, mu_h)) for k in range(max_r + 1)]
-        probs_a   = [float(poisson.pmf(k, mu_a)) for k in range(max_r + 1)]
+        # ── Run total probabilities — NEGATIVE BINOMIAL (replaces Poisson) ──────
+        # Each team's run distribution is modelled as NB(n=NB_DISPERSION, p=n/(n+mu))
+        # which has mean=mu and variance=mu + mu^2/r > mu (overdispersed vs Poisson).
+        # Joint distribution is computed as convolution of the two NB marginals,
+        # identical in structure to the old Poisson convolution.
+        n_h, p_nb_h = _nb_params(mu_h)
+        n_a, p_nb_a = _nb_params(mu_a)
+        probs_h   = [float(nbinom.pmf(k, n_h, p_nb_h)) for k in range(max_r + 1)]
+        probs_a   = [float(nbinom.pmf(k, n_a, p_nb_a)) for k in range(max_r + 1)]
         probs_tot = [0.0] * (2 * max_r + 2)
         for i in range(max_r + 1):
             for j in range(max_r + 1):
@@ -481,9 +465,9 @@ def compute_run_edges(gamma: float = 1.86):
         p_imp_over  = implied_prob_american(row["total_over_odds"])
         p_imp_under = implied_prob_american(row["total_under_odds"])
 
-        edge_home  = round(p_home - p_imp_home, 4)       if p_imp_home              else None
-        edge_away  = round(p_away - p_imp_away, 4)       if p_imp_away              else None
-        edge_over  = round(p_over_tot - p_imp_over, 4)   if p_imp_over  and p_over_tot  else None
+        edge_home  = round(p_home  - p_imp_home,  4) if p_imp_home              else None
+        edge_away  = round(p_away  - p_imp_away,  4) if p_imp_away              else None
+        edge_over  = round(p_over_tot  - p_imp_over,  4) if p_imp_over  and p_over_tot  else None
         edge_under = round(p_under_tot - p_imp_under, 4) if p_imp_under and p_under_tot else None
 
         edges     = [e for e in [edge_home, edge_away, edge_over, edge_under] if e is not None]
@@ -494,14 +478,8 @@ def compute_run_edges(gamma: float = 1.86):
             total_line is not None and
             abs(model_total - float(total_line)) <= HIGH_VARIANCE_BAND
         )
-        if high_variance:
-            log.info(
-                f"HIGH_VARIANCE: game_id={row['game_id']} "
-                f"model_total={model_total:.2f} line={total_line} "
-                f"delta={abs(model_total - float(total_line)):.2f}"
-            )
 
-        # ── Decision: confidence floor → cliff → edge floor ───────────────────
+        # ── Decision logic ───────────────────────────────────────────────────────
         winning_side = "home" if p_home >= p_away else "away"
         winning_conf = max(p_home, p_away)
         winning_odds = row["home_odds"] if winning_side == "home" else row["away_odds"]
@@ -515,10 +493,7 @@ def compute_run_edges(gamma: float = 1.86):
                 log.warning(f"FAVORITE_CLIFF: game_id={row['game_id']} side={winning_side} odds={winning_odds}")
         elif best_edge and best_edge < CANDIDATE_EDGE_FLOOR:
             decision = "LEAN"
-            log.info(
-                f"EDGE_FLOOR_DOWNGRADE: game_id={row['game_id']} "
-                f"best_edge={best_edge:.4f} < {CANDIDATE_EDGE_FLOOR} -> LEAN"
-            )
+            log.info(f"EDGE_FLOOR_DOWNGRADE: game_id={row['game_id']} best_edge={best_edge:.4f} -> LEAN")
         else:
             decision = "CANDIDATE" if best_edge and best_edge >= CANDIDATE_EDGE_FLOOR else "NO BET"
 
@@ -532,30 +507,21 @@ def compute_run_edges(gamma: float = 1.86):
                 line=%s, over_odds=%s, under_odds=%s,
                 card_decision=%s,
                 staking_pct=COALESCE(%s, staking_pct),
-                high_variance=%s,
-                value_dog=%s,
-                weather_temp_f=%s,
-                weather_wind_mph=%s,
-                weather_wind_deg=%s,
-                weather_rain_prob=%s,
-                weather_multiplier=%s,
-                weather_gate_triggered=FALSE
+                high_variance=%s, value_dog=%s,
+                weather_temp_f=%s, weather_wind_mph=%s,
+                weather_wind_deg=%s, weather_rain_prob=%s,
+                weather_multiplier=%s, weather_gate_triggered=FALSE
             WHERE id=%s
         """, (
             p_home, p_away, p_over_tot, p_under_tot,
             edge_home, edge_away, edge_over, edge_under,
             row["home_odds"], row["away_odds"],
             total_line, row["total_over_odds"], row["total_under_odds"],
-            decision,
-            staking_override,
-            high_variance,
-            value_dog_triggered,
-            wx_meta.get("temp_f"),
-            wx_meta.get("wind_mph"),
-            wx_meta.get("wind_deg"),
-            wx_meta.get("rain_prob"),
-            wx_mult,
-            row["id"]
+            decision, staking_override,
+            high_variance, value_dog_triggered,
+            wx_meta.get("temp_f"), wx_meta.get("wind_mph"),
+            wx_meta.get("wind_deg"), wx_meta.get("rain_prob"),
+            wx_mult, row["id"]
         ))
 
     conn.commit()

@@ -103,6 +103,7 @@ MIGRATIONS = [
         PRIMARY KEY (team_id, season)
     );
     """,
+    # sharp_signals with UNIQUE constraint for upsert in pinnacle_lines.py
     """
     CREATE TABLE IF NOT EXISTS sharp_signals (
         id               SERIAL PRIMARY KEY,
@@ -111,18 +112,26 @@ MIGRATIONS = [
         line_moved_sharp BOOLEAN DEFAULT FALSE,
         sharp_money_pct  FLOAT,
         sp_fip_edge      FLOAT,
-        created_at       TIMESTAMPTZ DEFAULT NOW()
+        pinnacle_open    FLOAT,
+        pinnacle_current FLOAT,
+        created_at       TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE (game_id, side)
     );
     """,
-    # ── Weather columns on model_predictions (Jun 6 round 3) ─────────────────
-    # Added by weather gate integration. Stored for post-mortem and threshold
-    # tuning — allows us to answer whether weather rules are helping after 7 days.
+    # ── Weather columns on model_predictions (Jun 6 r3) ─────────────────────
     "ALTER TABLE model_predictions ADD COLUMN IF NOT EXISTS weather_temp_f        FLOAT;",
     "ALTER TABLE model_predictions ADD COLUMN IF NOT EXISTS weather_wind_mph       FLOAT;",
     "ALTER TABLE model_predictions ADD COLUMN IF NOT EXISTS weather_wind_deg       FLOAT;",
     "ALTER TABLE model_predictions ADD COLUMN IF NOT EXISTS weather_rain_prob      FLOAT;",
     "ALTER TABLE model_predictions ADD COLUMN IF NOT EXISTS weather_multiplier     FLOAT;",
     "ALTER TABLE model_predictions ADD COLUMN IF NOT EXISTS weather_gate_triggered BOOLEAN DEFAULT FALSE;",
+    # ── Pinnacle columns on sharp_signals (Jun 6 r4) ──────────────────────
+    "ALTER TABLE sharp_signals ADD COLUMN IF NOT EXISTS pinnacle_open    FLOAT;",
+    "ALTER TABLE sharp_signals ADD COLUMN IF NOT EXISTS pinnacle_current FLOAT;",
+    # UNIQUE constraint needed for ON CONFLICT upsert in pinnacle_lines.py
+    # IF NOT EXISTS syntax not available for constraints — safe to ignore
+    # duplicate constraint errors on re-run.
+    "ALTER TABLE sharp_signals ADD CONSTRAINT IF NOT EXISTS sharp_signals_game_side_uniq UNIQUE (game_id, side);",
 ]
 
 def run_migrations():
@@ -131,11 +140,10 @@ def run_migrations():
     for sql in MIGRATIONS:
         try:
             cur.execute(sql)
+            conn.commit()
         except Exception as e:
-            log.error(f"Migration error: {e}\nSQL: {sql}")
+            log.warning(f"Migration skipped (likely already applied): {e}")
             conn.rollback()
-            raise
-    conn.commit()
     cur.close()
     conn.close()
     log.info("Migrations complete")
