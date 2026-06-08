@@ -1,0 +1,40 @@
+{
+  "last_updated": "2026-06-07",
+  "model_version": "v2.4",
+  "rolling_window_days": 8,
+  "sessions": [
+    {"date": "2026-05-30", "candidate_wr": 0.75,  "units": 2.1},
+    {"date": "2026-05-31", "candidate_wr": 0.75,  "units": 1.8},
+    {"date": "2026-06-01", "candidate_wr": 1.0,   "units": 2.6},
+    {"date": "2026-06-02", "candidate_wr": 1.0,   "units": 3.1},
+    {"date": "2026-06-03", "candidate_wr": 0.875, "units": 2.4},
+    {"date": "2026-06-04", "candidate_wr": 0.667, "units": 1.2},
+    {"date": "2026-06-05", "candidate_wr": 0.833, "units": 2.9},
+    {"date": "2026-06-06", "candidate_wr": 1.0,   "units": 5.8}
+  ],
+  "rolling_candidate_wr": 0.863,
+  "rolling_units_per_day": 2.74,
+  "total_candidate_picks": 56,
+  "total_wins": 48,
+  "total_losses": 8,
+  "total_units_net": 21.9,
+  "calibration_adjustments": {
+    "strong_edge_boost": 0.10,
+    "value_edge_boost": 0.05,
+    "marginal_suppression": true,
+    "favorite_cliff_odds": -220,
+    "k_prop_win_prob_gate": 0.60,
+    "nb_dispersion": 20,
+    "confidence_floor": 0.60
+  },
+  "signals": {
+    "value_dog_wr_7d": 0.857,
+    "road_blowout_defense_wr_7d": 1.0,
+    "high_variance_suppress_accuracy_7d": 0.889,
+    "undecided_sp_gate_accuracy_7d": 1.0,
+    "pinnacle_cliff_override_wr": 1.0,
+    "neg_binom_no_bet_accuracy": 1.0
+  },
+  "next_calibration_trigger": "2026-06-08",
+  "notes": "7-0 on June 6 — best single-day result in model history. NegBinom + Pinnacle tracker both contributed on debut. No threshold adjustments warranted — all rules performing at or above target."
+}

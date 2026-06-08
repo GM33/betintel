@@ -1,0 +1,106 @@
+{
+  "date": "2026-06-06",
+  "model_version": "v2.4",
+  "book": "DraftKings",
+  "summary": {
+    "candidate_picks": 7,
+    "candidate_wins": 7,
+    "candidate_losses": 0,
+    "win_rate": 1.0,
+    "units_net": 5.8,
+    "lean_correct": 5,
+    "lean_total": 5,
+    "no_bet_correct": 2
+  },
+  "picks": [
+    {
+      "game": "SEA @ DET",
+      "pick": "SEA ML",
+      "odds": -148,
+      "tier": "CANDIDATE",
+      "rules_fired": ["road_blowout_defense", "sharp_momentum"],
+      "score": "SEA 4, DET 0",
+      "result": "WIN",
+      "units": 0.68
+    },
+    {
+      "game": "KC @ MIN",
+      "pick": "KC ML",
+      "odds": 132,
+      "tier": "CANDIDATE",
+      "rules_fired": ["value_dog"],
+      "score": "KC 3, MIN 2",
+      "result": "WIN",
+      "units": 1.32
+    },
+    {
+      "game": "PIT @ ATL",
+      "pick": "ATL ML",
+      "odds": -162,
+      "tier": "CANDIDATE",
+      "rules_fired": ["confidence_floor"],
+      "score": "ATL 6, PIT 3",
+      "result": "WIN",
+      "units": 0.62
+    },
+    {
+      "game": "WSH @ ARI",
+      "pick": "WSH ML",
+      "odds": 155,
+      "tier": "CANDIDATE",
+      "rules_fired": ["value_dog", "road_momentum"],
+      "score": "WSH 6, ARI 1",
+      "result": "WIN",
+      "units": 1.55
+    },
+    {
+      "game": "CLE @ TEX",
+      "pick": "CLE ML",
+      "odds": -178,
+      "tier": "CANDIDATE",
+      "rules_fired": ["road_blowout_defense", "neg_binom_total_suppression"],
+      "score": "CLE 6, TEX 0",
+      "result": "WIN",
+      "units": 0.56
+    },
+    {
+      "game": "MIL @ COL",
+      "pick": "MIL ML",
+      "odds": -148,
+      "tier": "CANDIDATE",
+      "rules_fired": ["weather_gate_clear", "lob_variance_flag_COL"],
+      "score": "MIL 7, COL 1",
+      "result": "WIN",
+      "units": 0.68
+    },
+    {
+      "game": "LAA @ LAD",
+      "pick": "LAD ML",
+      "odds": -245,
+      "tier": "CANDIDATE",
+      "rules_fired": ["favorite_cliff_override_pinnacle"],
+      "score": "LAD 9, LAA 2",
+      "result": "WIN",
+      "units": 0.41
+    }
+  ],
+  "suppressed": [
+    {"game": "STL @ CIN", "rule": "HIGH_VARIANCE", "score": "STL 6, CIN 5", "correct": true},
+    {"game": "SF @ CHC", "rule": "HIGH_VARIANCE + neg_binom_tails", "score": "CHC 3, SF 2 F/10", "correct": true},
+    {"game": "BAL @ TOR", "rule": "UNDECIDED_SP_GATE", "score": "TOR 6, BAL 4", "correct": true},
+    {"game": "TB @ MIA", "rule": "road_blowout_suppress_TB", "score": "MIA 4, TB 3", "correct": true},
+    {"game": "NYM @ SD", "rule": "confidence_floor_58pct", "score": "SD 3, NYM 2", "correct": true}
+  ],
+  "no_bet": [
+    {"game": "CHW @ PHI", "reason": "no_sharp_signal_low_confidence"},
+    {"game": "ATH @ HOU", "reason": "lob_flag_ATH + edge_below_floor", "note": "NegBinom correctly priced HOU blowout — confirmed no-bet was right (HOU 13, ATH 2)"}
+  ],
+  "rule_performance": {
+    "road_blowout_defense": {"saves": 2, "wins_missed": 0},
+    "value_dog": {"wins": 2, "losses": 0},
+    "favorite_cliff_pinnacle_override": {"correct_unlocks": 1},
+    "undecided_sp_gate": {"correct_suppresses": 1},
+    "high_variance": {"correct_suppresses": 2},
+    "neg_binom": {"blowouts_correctly_priced": 1, "contribution": "ATH/HOU no-bet confirmed"}
+  }
+}
