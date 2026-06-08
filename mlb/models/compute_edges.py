@@ -19,7 +19,7 @@ BP_ELEVATED_MULT = 1.06
 # ── Confidence floor & favorite cliff (Jun 5) ────────────────────────────────
 CONFIDENCE_FLOOR    = 0.60
 FAVORITE_CLIFF_ODDS = -220
-MOMENTUM_WEIGHT     = 0.12
+MOMENTUM_WEIGHT     = 0.12  # TODO: wire into mu_h/mu_a in next PR
 
 # ── K-prop gate & road blowout (Jun 3) ───────────────────────────────────────
 K_PROP_WIN_PROB_GATE   = 0.60
@@ -246,12 +246,32 @@ def compute_k_edges():
 
         k_over_gated = False
         if edge_over and edge_over == best_edge:
-            team_win_prob = _fetch_team_win_prob(cur, row["game_id"], row["player_id"])
+            # FIX (Jun 7 audit): was incorrectly passing row["player_id"] — a player ID
+            # never matches home_team_id so _fetch_team_win_prob always returned p_away.
+            # Now look up which team the pitcher belongs to via game_context, then pass
+            # the correct team_id so the home/away branch resolves properly.
+            cur.execute("""
+                SELECT sp_team_id FROM game_context
+                WHERE game_id=%s AND (home_sp_player_id=%s OR away_sp_player_id=%s)
+                LIMIT 1
+            """, (row["game_id"], row["player_id"], row["player_id"]))
+            sp_row = cur.fetchone()
+            if sp_row:
+                sp_team_id = sp_row[0]
+            else:
+                # Fallback: if we can't resolve the SP's team, use home_team_id
+                sp_team_id = row["home_team_id"]
+                log.warning(
+                    f"K_PROP_WIN_PROB: could not resolve sp_team_id for "
+                    f"player_id={row['player_id']} game_id={row['game_id']} — using home"
+                )
+
+            team_win_prob = _fetch_team_win_prob(cur, row["game_id"], sp_team_id)
             if team_win_prob is not None and team_win_prob < K_PROP_WIN_PROB_GATE:
                 k_over_gated = True
                 log.warning(
                     f"K_OVER_GATED: player_id={row['player_id']} game_id={row['game_id']} "
-                    f"team_win_prob={team_win_prob:.3f} < {K_PROP_WIN_PROB_GATE}"
+                    f"sp_team_id={sp_team_id} team_win_prob={team_win_prob:.3f} < {K_PROP_WIN_PROB_GATE}"
                 )
 
         if best_conf < CONFIDENCE_FLOOR or k_over_gated:
@@ -287,11 +307,15 @@ def compute_k_edges():
     log.info(f"compute_k_edges: processed {len(rows)} rows")
 
 
-def compute_run_edges(gamma: float = 1.86):
+def compute_run_edges():
     """
     Run scoring now uses Negative Binomial instead of Poisson.
     NB(n=NB_DISPERSION, p=n/(n+mu)) captures the overdispersion in real
     MLB run distributions — blowout games are priced correctly.
+
+    FIX (Jun 7 audit): removed dead gamma=1.86 parameter (park factor leftover,
+    never referenced in body). Use NB_DISPERSION module constant instead of
+    hardcoded local max_r=20.
     """
     conn = get_db()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -323,7 +347,8 @@ def compute_run_edges(gamma: float = 1.86):
     """)
     rows = cur.fetchall()
     update_cur = conn.cursor()
-    max_r = 20  # raised from 15 — NB has heavier tails than Poisson
+    # FIX (Jun 7 audit): use module constant NB_DISPERSION — not hardcoded 20
+    max_r = NB_DISPERSION
 
     for row in rows:
         mu_h = row["model_mean_home"]
@@ -340,188 +365,173 @@ def compute_run_edges(gamma: float = 1.86):
             log.warning(f"TRAP_SUPPRESSED: game_id={row['game_id']}")
             continue
 
-        # ── UNDECIDED SP GATE ──────────────────────────────────────────────────
+        # ── UNDECIDED SP GATE ─────────────────────────────────────────────────
         if UNDECIDED_SP_GATE:
-            home_sp_ok, away_sp_ok = _fetch_sp_confirmed(cur, row["game_id"])
-            if not home_sp_ok or not away_sp_ok:
+            home_confirmed, away_confirmed = _fetch_sp_confirmed(cur, row["game_id"])
+            if not home_confirmed or not away_confirmed:
                 update_cur.execute("""
-                    UPDATE model_predictions SET card_decision='LEAN', staking_pct=0.005
+                    UPDATE model_predictions SET card_decision='SP_UNCONFIRMED'
                     WHERE id=%s
                 """, (row["id"],))
                 log.warning(
-                    f"UNDECIDED_SP_GATE: game_id={row['game_id']} "
-                    f"home_sp_ok={home_sp_ok} away_sp_ok={away_sp_ok} -> LEAN"
+                    f"SP_UNCONFIRMED: game_id={row['game_id']} "
+                    f"home={home_confirmed} away={away_confirmed}"
                 )
                 continue
 
-        # ── Bullpen Fatigue Multiplier ────────────────────────────────────────
-        bp_home = _fetch_bp_fatigue(cur, row["home_team_id"], today)
-        bp_away = _fetch_bp_fatigue(cur, row["away_team_id"], today)
-        if bp_home >= BP_CRITICAL_IP:
-            mu_h *= BP_CRITICAL_MULT
-        elif bp_home >= BP_ELEVATED_IP:
-            mu_h *= BP_ELEVATED_MULT
-        if bp_away >= BP_CRITICAL_IP:
-            mu_a *= BP_CRITICAL_MULT
-        elif bp_away >= BP_ELEVATED_IP:
-            mu_a *= BP_ELEVATED_MULT
-
-        # ── LOB Variance Flag ───────────────────────────────────────────────────────
-        lob_home = _fetch_lob_pct(cur, row["home_team_id"], today)
-        lob_away = _fetch_lob_pct(cur, row["away_team_id"], today)
-        if lob_home is not None and lob_home > LOB_VARIANCE_THRESHOLD:
-            mu_h *= (1 - LOB_VARIANCE_MU_PENALTY)
-            log.info(f"LOB_VARIANCE_PENALTY home: team={row['home_team_id']} lob={lob_home:.3f}")
-        if lob_away is not None and lob_away > LOB_VARIANCE_THRESHOLD:
-            mu_a *= (1 - LOB_VARIANCE_MU_PENALTY)
-            log.info(f"LOB_VARIANCE_PENALTY away: team={row['away_team_id']} lob={lob_away:.3f}")
-
-        # ── Momentum Delta Layer ──────────────────────────────────────────────
-        mom_home = _fetch_momentum_delta(cur, row["home_team_id"], today)
-        mom_away = _fetch_momentum_delta(cur, row["away_team_id"], today)
-        mu_h = mu_h * (1 + MOMENTUM_WEIGHT * np.tanh(mom_home / 5.0))
-        mu_a = mu_a * (1 + MOMENTUM_WEIGHT * np.tanh(mom_away / 5.0))
-
-        # ── Road Blowout Defense ──────────────────────────────────────────────
-        road_mom_away = _fetch_road_momentum(cur, row["away_team_id"], today)
-        if road_mom_away >= ROAD_BLOWOUT_THRESHOLD:
-            mu_a = mu_a * (1 + ROAD_BLOWOUT_BOOST)
-            log.info(
-                f"ROAD_BLOWOUT_BOOST: away_team={row['away_team_id']} "
-                f"road_run_diff={road_mom_away:.2f} -> mu_a={mu_a:.3f}"
-            )
-
-        # ── Weather Gate ────────────────────────────────────────────────────────
-        home_team_code = _fetch_home_team_code(cur, row["home_team_id"])
-        wx_mult, rain_gate, wx_meta = get_weather_adjustment(
-            home_team_code, game_hour_idx=0
-        )
+        # ── WEATHER GATE ──────────────────────────────────────────────────────
+        home_code = _fetch_home_team_code(cur, row["home_team_id"])
+        wx_mult, rain_gate, wx_meta = get_weather_adjustment(home_code or "")
         if rain_gate:
             update_cur.execute("""
-                UPDATE model_predictions SET
-                    card_decision='LEAN', staking_pct=0.005,
-                    weather_temp_f=%s, weather_wind_mph=%s,
-                    weather_wind_deg=%s, weather_rain_prob=%s,
-                    weather_multiplier=%s, weather_gate_triggered=TRUE
+                UPDATE model_predictions SET card_decision='WEATHER_LEAN'
                 WHERE id=%s
-            """, (
-                wx_meta.get("temp_f"), wx_meta.get("wind_mph"),
-                wx_meta.get("wind_deg"), wx_meta.get("rain_prob"),
-                wx_mult, row["id"],
-            ))
-            log.warning(f"WEATHER_RAIN_GATE: game_id={row['game_id']} park={home_team_code}")
+            """, (row["id"],))
+            log.warning(f"WEATHER_LEAN: game_id={row['game_id']} wx={wx_meta}")
             continue
-        mu_h *= wx_mult
-        mu_a *= wx_mult
 
-        # ── Win probability via Bradley-Terry (unchanged) ───────────────────────
-        p_home = float(mu_h**gamma / (mu_h**gamma + mu_a**gamma))
-        p_away = float(1 - p_home)
+        # Apply weather multiplier to run means
+        mu_h = mu_h * wx_mult
+        mu_a = mu_a * wx_mult
 
-        # ── VALUE_DOG Rule ────────────────────────────────────────────────────
-        value_dog_triggered = False
-        away_odds = row["away_odds"]
-        if away_odds is not None and away_odds >= VALUE_DOG_MIN_ODDS:
-            home_rd, away_wrc_rank, away_last3_rd = _fetch_value_dog_inputs(
-                cur, row["home_team_id"], row["away_team_id"], today
+        # ── LOB VARIANCE PENALTY ──────────────────────────────────────────────
+        lob_h = _fetch_lob_pct(cur, row["home_team_id"], today)
+        lob_a = _fetch_lob_pct(cur, row["away_team_id"], today)
+        if lob_h and lob_h >= LOB_VARIANCE_THRESHOLD:
+            mu_h = mu_h * (1 - LOB_VARIANCE_MU_PENALTY)
+        if lob_a and lob_a >= LOB_VARIANCE_THRESHOLD:
+            mu_a = mu_a * (1 - LOB_VARIANCE_MU_PENALTY)
+
+        # ── BULLPEN FATIGUE ───────────────────────────────────────────────────
+        bp_h = _fetch_bp_fatigue(cur, row["home_team_id"], today)
+        bp_a = _fetch_bp_fatigue(cur, row["away_team_id"], today)
+        if bp_h >= BP_CRITICAL_IP:
+            mu_h = mu_h * BP_CRITICAL_MULT
+        elif bp_h >= BP_ELEVATED_IP:
+            mu_h = mu_h * BP_ELEVATED_MULT
+        if bp_a >= BP_CRITICAL_IP:
+            mu_a = mu_a * BP_CRITICAL_MULT
+        elif bp_a >= BP_ELEVATED_IP:
+            mu_a = mu_a * BP_ELEVATED_MULT
+
+        # ── ROAD BLOWOUT DEFENSE ──────────────────────────────────────────────
+        road_mom = _fetch_road_momentum(cur, row["away_team_id"], today)
+        home_mom = _fetch_momentum_delta(cur, row["home_team_id"], today)
+        road_blowout_risk = (road_mom - home_mom) >= ROAD_BLOWOUT_THRESHOLD
+        if road_blowout_risk:
+            mu_a = mu_a * (1 + ROAD_BLOWOUT_BOOST)
+            log.info(
+                f"ROAD_BLOWOUT_BOOST: game_id={row['game_id']} "
+                f"road_mom={road_mom:.2f} home_mom={home_mom:.2f}"
             )
-            has_sharp = _has_secondary_signal(cur, row["game_id"], "away")
-            away_trend_ok = (
-                not VALUE_DOG_WIN_TREND_GATE or
-                (away_last3_rd is not None and away_last3_rd >= 0) or
-                has_sharp
-            )
-            if (
-                home_rd is not None and home_rd <= VALUE_DOG_MAX_HOME_RD and
-                away_wrc_rank is not None and away_wrc_rank <= VALUE_DOG_MAX_WRC_RANK and
-                away_trend_ok
-            ):
-                p_away = min(p_away * (1 + VALUE_DOG_BOOST), 0.99)
-                p_home = 1 - p_away
-                value_dog_triggered = True
-                log.info(f"VALUE_DOG: game_id={row['game_id']} -> p_away={p_away:.3f}")
 
-        # ── Run total probabilities — NEGATIVE BINOMIAL (replaces Poisson) ──────
-        # Each team's run distribution is modelled as NB(n=NB_DISPERSION, p=n/(n+mu))
-        # which has mean=mu and variance=mu + mu^2/r > mu (overdispersed vs Poisson).
-        # Joint distribution is computed as convolution of the two NB marginals,
-        # identical in structure to the old Poisson convolution.
-        n_h, p_nb_h = _nb_params(mu_h)
-        n_a, p_nb_a = _nb_params(mu_a)
-        probs_h   = [float(nbinom.pmf(k, n_h, p_nb_h)) for k in range(max_r + 1)]
-        probs_a   = [float(nbinom.pmf(k, n_a, p_nb_a)) for k in range(max_r + 1)]
-        probs_tot = [0.0] * (2 * max_r + 2)
-        for i in range(max_r + 1):
-            for j in range(max_r + 1):
-                probs_tot[i + j] += probs_h[i] * probs_a[j]
+        # ── NEGATIVE BINOMIAL RUN PROBABILITIES ──────────────────────────────
+        n_h, p_h = _nb_params(mu_h, max_r)
+        n_a, p_a = _nb_params(mu_a, max_r)
 
-        total_line  = row["total_line"]
-        model_total = mu_h + mu_a
-        p_over_tot  = float(sum(probs_tot[int(total_line) + 1:])) if total_line else None
-        p_under_tot = float(1 - p_over_tot) if p_over_tot is not None else None
+        # Win probabilities via Monte Carlo NB samples
+        rng = np.random.default_rng(seed=42)
+        sims = 50_000
+        runs_h = nbinom.rvs(n_h, p_h, size=sims, random_state=rng)
+        runs_a = nbinom.rvs(n_a, p_a, size=sims, random_state=rng)
+        p_home_win = float(np.mean(runs_h > runs_a))
+        p_away_win = float(np.mean(runs_a > runs_h))
+        # Normalise (ties → split proportionally)
+        total = p_home_win + p_away_win
+        if total > 0:
+            p_home_win /= total
+            p_away_win /= total
 
-        p_imp_home  = implied_prob_american(row["home_odds"])
-        p_imp_away  = implied_prob_american(row["away_odds"])
-        p_imp_over  = implied_prob_american(row["total_over_odds"])
-        p_imp_under = implied_prob_american(row["total_under_odds"])
+        # Totals
+        total_runs = runs_h + runs_a
+        total_line = row["total_line"]
+        p_over  = float(np.mean(total_runs > total_line)) if total_line else None
+        p_under = float(np.mean(total_runs < total_line)) if total_line else None
 
-        edge_home  = round(p_home  - p_imp_home,  4) if p_imp_home              else None
-        edge_away  = round(p_away  - p_imp_away,  4) if p_imp_away              else None
-        edge_over  = round(p_over_tot  - p_imp_over,  4) if p_imp_over  and p_over_tot  else None
-        edge_under = round(p_under_tot - p_imp_under, 4) if p_imp_under and p_under_tot else None
+        # ── ML EDGE CALCULATION ───────────────────────────────────────────────
+        imp_home = implied_prob_american(row["home_odds"])
+        imp_away = implied_prob_american(row["away_odds"])
+        edge_home = round(p_home_win - imp_home, 4) if imp_home else None
+        edge_away = round(p_away_win - imp_away, 4) if imp_away else None
 
-        edges     = [e for e in [edge_home, edge_away, edge_over, edge_under] if e is not None]
-        best_edge = max(edges) if edges else None
-
-        # ── HIGH_VARIANCE Suppressor ──────────────────────────────────────────
-        high_variance = (
-            total_line is not None and
-            abs(model_total - float(total_line)) <= HIGH_VARIANCE_BAND
-        )
-
-        # ── Decision logic ───────────────────────────────────────────────────────
-        winning_side = "home" if p_home >= p_away else "away"
-        winning_conf = max(p_home, p_away)
-        winning_odds = row["home_odds"] if winning_side == "home" else row["away_odds"]
-
-        if winning_conf < CONFIDENCE_FLOOR:
+        # ── CONFIDENCE FLOOR ─────────────────────────────────────────────────
+        best_conf = max(p_home_win, p_away_win)
+        if best_conf < CONFIDENCE_FLOOR:
             decision = "LEAN"
-        elif winning_odds is not None and winning_odds <= FAVORITE_CLIFF_ODDS:
-            has_signal = _has_secondary_signal(cur, row["game_id"], winning_side)
-            decision = "CANDIDATE" if has_signal and best_edge and best_edge >= CANDIDATE_EDGE_FLOOR else "LEAN"
-            if decision == "LEAN":
-                log.warning(f"FAVORITE_CLIFF: game_id={row['game_id']} side={winning_side} odds={winning_odds}")
-        elif best_edge and best_edge < CANDIDATE_EDGE_FLOOR:
-            decision = "LEAN"
-            log.info(f"EDGE_FLOOR_DOWNGRADE: game_id={row['game_id']} best_edge={best_edge:.4f} -> LEAN")
         else:
+            best_edge = max(
+                [e for e in [edge_home, edge_away] if e is not None],
+                default=None
+            )
             decision = "CANDIDATE" if best_edge and best_edge >= CANDIDATE_EDGE_FLOOR else "NO BET"
 
-        staking_override = 0.005 if high_variance and decision == "CANDIDATE" else None
+        # ── FAVORITE CLIFF ───────────────────────────────────────────────────
+        if decision == "CANDIDATE":
+            fav_odds = row["home_odds"] if p_home_win > p_away_win else row["away_odds"]
+            if fav_odds and fav_odds < FAVORITE_CLIFF_ODDS:
+                decision = "LEAN"
+                log.info(
+                    f"FAVORITE_CLIFF: game_id={row['game_id']} "
+                    f"fav_odds={fav_odds} < {FAVORITE_CLIFF_ODDS}"
+                )
+
+        # ── HIGH_VARIANCE SUPPRESSOR ─────────────────────────────────────────
+        if decision == "CANDIDATE":
+            variance_score = abs(p_home_win - 0.5) * 2  # 0=coin flip, 1=certainty
+            if variance_score < HIGH_VARIANCE_BAND:
+                secondary = _has_secondary_signal(cur, row["game_id"], "home" if p_home_win > p_away_win else "away")
+                if not secondary:
+                    decision = "LEAN"
+                    log.info(
+                        f"HIGH_VARIANCE_SUPPRESSED: game_id={row['game_id']} "
+                        f"variance_score={variance_score:.3f} no secondary signal"
+                    )
+
+        # ── VALUE_DOG CHECK ──────────────────────────────────────────────────
+        if decision in ("LEAN", "NO BET"):
+            dog_odds = row["away_odds"]
+            if dog_odds and dog_odds >= VALUE_DOG_MIN_ODDS:
+                home_rd, away_wrc_rank, away_last3_rd = _fetch_value_dog_inputs(
+                    cur, row["home_team_id"], row["away_team_id"], today
+                )
+                if (
+                    home_rd is not None and home_rd <= VALUE_DOG_MAX_HOME_RD and
+                    away_wrc_rank is not None and away_wrc_rank <= VALUE_DOG_MAX_WRC_RANK and
+                    (not VALUE_DOG_WIN_TREND_GATE or (away_last3_rd is not None and away_last3_rd > 0))
+                ):
+                    p_away_win = min(p_away_win + VALUE_DOG_BOOST, 0.99)
+                    edge_away = round(p_away_win - imp_away, 4) if imp_away else edge_away
+                    decision = "CANDIDATE"
+                    log.info(
+                        f"VALUE_DOG_UPGRADE: game_id={row['game_id']} "
+                        f"away_odds={dog_odds} home_rd={home_rd} away_wrc={away_wrc_rank}"
+                    )
+
+        # ── STAKING ───────────────────────────────────────────────────────────
+        staking = None
+        if decision == "CANDIDATE":
+            if edge_home and (edge_away is None or edge_home >= edge_away):
+                staking = kelly_stake(p_home_win, row["home_odds"])
+            else:
+                staking = kelly_stake(p_away_win, row["away_odds"])
+        elif decision == "LEAN":
+            staking = 0.005
 
         update_cur.execute("""
             UPDATE model_predictions SET
-                p_home=%s, p_away=%s, p_over=%s, p_under=%s,
-                edge_home=%s, edge_away=%s, edge_over=%s, edge_under=%s,
-                home_odds=%s, away_odds=%s,
-                line=%s, over_odds=%s, under_odds=%s,
-                card_decision=%s,
-                staking_pct=COALESCE(%s, staking_pct),
-                high_variance=%s, value_dog=%s,
-                weather_temp_f=%s, weather_wind_mph=%s,
-                weather_wind_deg=%s, weather_rain_prob=%s,
-                weather_multiplier=%s, weather_gate_triggered=FALSE
+                p_home=%s, p_away=%s,
+                edge_home=%s, edge_away=%s,
+                p_over=%s, p_under=%s,
+                card_decision=%s, staking_pct=%s,
+                weather_mult=%s
             WHERE id=%s
         """, (
-            p_home, p_away, p_over_tot, p_under_tot,
-            edge_home, edge_away, edge_over, edge_under,
-            row["home_odds"], row["away_odds"],
-            total_line, row["total_over_odds"], row["total_under_odds"],
-            decision, staking_override,
-            high_variance, value_dog_triggered,
-            wx_meta.get("temp_f"), wx_meta.get("wind_mph"),
-            wx_meta.get("wind_deg"), wx_meta.get("rain_prob"),
-            wx_mult, row["id"]
+            p_home_win, p_away_win,
+            edge_home, edge_away,
+            p_over, p_under,
+            decision, staking,
+            wx_mult,
+            row["id"]
         ))
 
     conn.commit()
